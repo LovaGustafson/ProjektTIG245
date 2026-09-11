@@ -1,0 +1,24 @@
+# Confirmed exclusions (PROJECT_SPEC.md sections 3.1 and 4.6).
+excluded_accounts:
+  - "7698"
+  - "7699"
+
+# TODO: awaiting AK confirmation of excluded Vertyp values.
+# null means unresolved, not an approved empty list.
+excluded_verification_types: null
+
+# TODO: awaiting AK confirmation of mandatory business information and scope.
+# image_reference, signature and attestation are examples, not confirmed rules.
+# This setting is separate from the five required row-validation fields in
+# PROJECT_SPEC.md section 02.
+required_fields: null
+
+# Baseline: approximately every twentieth verification after full analysis.
+# TODO: confirm the final selection method with AK before implementing sampling.
+manual_sample_interval: 20
+
+# TODO / awaiting business confirmation:
+# - Meanings of Mm, Pg, Sign, Att, Ksansv and Bild.
+# - Supplier identifier; do not assume counterparty identifies the supplier.
+# - Supplier/procurement and attestation register structures.
+# - Correct attestation flow and authorization rules.

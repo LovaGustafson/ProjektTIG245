@@ -1,0 +1,9 @@
+# Excel tables and .xlsx input/output
+pandas
+openpyxl
+
+# Configuration
+PyYAML
+
+# Tests
+pytest
