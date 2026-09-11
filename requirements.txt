@@ -2,6 +2,10 @@
 pandas
 openpyxl
 
+# Local image/document decoding (no OCR or cloud services)
+Pillow
+pypdf
+
 # Configuration
 PyYAML
 
