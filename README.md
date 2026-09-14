@@ -63,39 +63,68 @@ src/
 tests/                   Module and integration tests
 ```
 
-Only the folder/package scaffold and configuration exist at this stage.
-Implementation modules, the pipeline, entry point and UI will be added in the
-order specified in section 6.1 of `PROJECT_SPEC.md`. There is no runnable invoice
-analysis yet.
+## Installera och köra lokalt
 
-## Local setup
+v0.1 har ett körbart tekniskt flöde och ett svenskt Streamlit-gränssnitt.
+Verksamhetskontroller som väntar på AK:s bekräftelse förblir `NOT_CHECKED`.
+Detta är inte ett godkännande av fakturorna.
 
-Use Python 3.13 for the initial development environment (the version available
-during scaffolding; the specification does not mandate a Python version).
-From the repository root on macOS/Linux:
+Använd Python 3.13 (testad version). Kör från projektets rot på macOS/Linux:
 
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
 ```
 
-On Windows PowerShell, create the environment with `py -3 -m venv .venv`
-and activate it with `.venv\Scripts\Activate.ps1`, then run the same pip command.
+Öppna http://127.0.0.1:8501. Ladda upp en `.xlsx`-fil, välj **Starta analys**
+och ladda ner de tre rapporterna. Det första kalkylbladet används. Appen är
+bunden till den lokala datorn och användningstelemetri är avstängd.
+Arbetsfiler tas bort efter körningen; resultat och nedladdningar behålls i
+sessionens minne. Byte av uppladdad fil rensar tidigare resultat.
 
-Initial dependencies are pandas for tabular data, openpyxl for `.xlsx` files,
-PyYAML for configuration, and pytest for tests. Versions are not pinned yet;
-this scaffold does not provide a locked dependency environment. Image/OCR and
-UI dependencies will be selected when their modules are implemented.
+På Windows PowerShell: skapa miljön med `py -3.13 -m venv .venv` och aktivera
+med `.venv\Scripts\Activate.ps1`. Kör sedan samma pip- och Streamlit-kommandon.
 
-Once tests are added, run them from the repository root:
+Kommandoradsalternativ:
 
 ```bash
-python -m pytest
+python -m src.main data/input/fakturor.xlsx --output-dir data/output/korning-001
+python -m src.main --help
 ```
 
-At this scaffold stage there are no test cases; pytest will report no tests
-collected (exit code 5).
+Använd en ny rapportkatalog för varje körning. Befintliga rapportfiler skrivs
+aldrig över. Sökvägen till indata ska avse din lokala fil; ingen exempelfaktura
+med verkliga uppgifter ingår i Git.
+
+Testa installationen:
+
+```bash
+python -m pip check
+python -m pytest -q
+```
+
+Beroenden finns i `requirements.txt`. Minimikrav anges där API-användningen
+kräver det; miljön är inte fullständigt versionslåst.
+
+## Begränsningar i v0.1
+
+- Leverantörs- och attestregler samt obligatoriska verksamhetsfält inväntar AK.
+- Bildläsaren utför inte OCR. Bildkoppling och referensregister konfigureras
+  inte via UI:t; laddade register innebär inte att verksamhetsregler bekräftats.
+- Rader utan användbart verifikationsnummer behålls i underlaget men grupperas
+  inte som verifikationer. Slutlig hantering kräver verksamhetsbeslut.
+- Konton matchas exakt som text. Numeriska konton markeras av valideringen;
+  de normaliseras inte automatiskt.
+- Valideringsdetaljer och samtliga kontrollresultat finns i UI/minnesresultatet;
+  Excel innehåller underlag, flaggningar, stickprov och sammanfattning.
+- `code` i flaggrapporten är tomt: `check_type` identifierar kontrollen men är
+  inte en orsakskod. Samma kontroll kan ge flera olika orsaker.
+- Egna framtida kontrolltexter behöver översättningar; originalorsaken bevaras.
+  Streamlits inbyggda filväljare kan innehålla engelska standardtexter.
+- Excel begränsar cellstorlek och datatyper. Decimalvärden exporteras som exakt
+  text; format som Excel inte stöder kan stoppa exporten utan att ändra källan.
 
 ## Configuration and pending decisions
 
@@ -117,7 +146,7 @@ the supplier. The final sampling method remains open to confirmation.
 
 Original invoices and reference data must only be read. All transformations
 must operate on working copies, with generated reports written separately to
-`data/output/`. The scaffold itself does not enforce filesystem permissions.
+`data/output/`. Existing destination files are never overwritten.
 
 Keep real invoices and sensitive registers in the ignored local data folders;
 do not commit them elsewhere or force-add them. Data and log folders contain

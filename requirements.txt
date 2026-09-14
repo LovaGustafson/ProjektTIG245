@@ -1,5 +1,5 @@
 # Excel tables and .xlsx input/output
-pandas
+pandas>=2.1
 openpyxl
 
 # Local image/document decoding (no OCR or cloud services)
@@ -13,4 +13,4 @@ PyYAML
 pytest
 
 # Local review interface
-streamlit
+streamlit>=1.63
