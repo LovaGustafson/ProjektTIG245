@@ -10,12 +10,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.presentation import context_fields, check_message
 from src.models.result import CheckResult
 from src.models.verification import Verification
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
-CHECK_COLUMNS = [field.name for field in fields(CheckResult)]
+CHECK_COLUMNS = [field.name for field in fields(CheckResult)] + ["verification_date", "header_text", "code", "message"]
 
 
 def _verification_rows(verifications: Iterable[Verification]) -> pd.DataFrame:
@@ -51,6 +52,7 @@ def generate_reports(
     flagged_checks: Iterable[CheckResult],
     manual_sample: Iterable[Verification],
     output_dir: str | Path,
+    summary: Mapping[str, int] | None = None,
 ) -> dict[str, Path]:
     """Export three new workbooks and return their paths keyed by report name.
 
@@ -77,16 +79,26 @@ def generate_reports(
     and prior reports cannot be overwritten. On failure, only files created by
     this call are removed. Filesystem and serialization errors propagate.
     """
+    flagged_verifications = list(flagged_verifications)
     checks = []
     for check in flagged_checks:
         record = asdict(check)
         record["status"] = check.status.value
+        context = {}
+        for verification in flagged_verifications:
+            if verification.verification_id == check.verification_id:
+                context = context_fields(verification.rows)
+                break
+        record.update(verification_date=context.get('verification_date'),
+                      header_text=context.get('header_text'), code=None,
+                      message=check_message(check))
         checks.append(record)
     workbooks = {
         "cleaned_data": _workbook({"rows": cleaned_data}),
         "flagged_invoices": _workbook({
             "checks": pd.DataFrame(checks, columns=CHECK_COLUMNS),
             "rows": _verification_rows(flagged_verifications),
+            **({"Summary": pd.DataFrame([summary])} if summary is not None else {}),
         }),
         "manual_sample": _workbook({"rows": _verification_rows(manual_sample)}),
     }

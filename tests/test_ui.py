@@ -67,7 +67,7 @@ def test_streamlit_result_screen():
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert [m.value for m in app.metric] == ['1', '0', '1']
+    assert [m.value for m in app.metric] == ['1', '0', '1', '4']
     assert len(app.get('download_button')) == 3
     assert app.warning
 
