@@ -11,3 +11,6 @@ PyYAML
 
 # Tests
 pytest
+
+# Local review interface
+streamlit
