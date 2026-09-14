@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 import pandas as pd
 
+from src.presentation import context_fields, validation_records
 from src.pipeline import PipelineResult, run_pipeline
 
 
@@ -30,19 +31,23 @@ def analyze_upload(content: bytes) -> UploadResult:
 
 
 def flagged_table(result: PipelineResult) -> pd.DataFrame:
-    return pd.DataFrame([
-        {'verification_id': r.verification_id, 'status': r.status.value,
-         'reasons': '\n'.join(r.flag_reasons)}
-        for r in result.detection_results if r.flag_reasons
-    ], columns=['verification_id', 'status', 'reasons'])
+    rows = []
+    for detection in result.detection_results:
+        if not detection.flag_reasons:
+            continue
+        context = {}
+        for verification in result.verifications:
+            if verification.verification_id == detection.verification_id:
+                context = context_fields(verification.rows)
+                break
+        rows.append(dict(verification_id=detection.verification_id, **context,
+                         status=detection.status.value,
+                         reasons='\n'.join(detection.flag_reasons)))
+    return pd.DataFrame(rows, columns=['verification_id', 'verification_date', 'header_text',
+                                       'status', 'amount', 'account', 'reasons'])
 
 
 def validation_table(result: PipelineResult) -> pd.DataFrame:
-    # Schema errors also occur on each row; present them once at schema scope.
-    schema = result.validation.schema_errors
-    records = [{'scope': 'schema', 'row_position': None, 'field': e.field,
-                'code': e.code, 'message': e.message} for e in schema]
-    records += [{'scope': 'row', 'row_position': row.row_position, 'field': e.field,
-                 'code': e.code, 'message': e.message}
-                for row in result.validation.rows for e in row.validation_errors if e not in schema]
-    return pd.DataFrame(records, columns=['scope', 'row_position', 'field', 'code', 'message'])
+    return pd.DataFrame(validation_records(result.standardized_data, result.validation),
+                        columns=['scope', 'row_position', 'verification_id',
+                                 'verification_line_id', 'field', 'code', 'message'])

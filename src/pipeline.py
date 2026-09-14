@@ -16,6 +16,7 @@ from src.models.result import CheckStatus
 from src.models.verification import Verification
 from src.sampling.manual_sample import create_manual_sample
 from src.output.report_generator import generate_reports
+from src.presentation import summary_counts
 
 
 @dataclass
@@ -78,7 +79,8 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     checks = [check for result in results for check in result.checks
               if check.status == CheckStatus.FLAGGED]
     paths = generate_reports(cleaned, flagged_verifications=flagged,
-                             flagged_checks=checks, manual_sample=sample, output_dir=output_dir)
+                             flagged_checks=checks, manual_sample=sample, output_dir=output_dir,
+                             summary=summary_counts(standardized, validation, results))
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',
