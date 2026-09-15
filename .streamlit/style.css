@@ -1,0 +1,129 @@
+/* Static presentation only. Container classes come from Streamlit's public
+   key -> st-key-* API. No source data or external resources enter this CSS. */
+:root {
+    --audit-navy: #172b42;
+    --audit-muted: #536479;
+    --audit-accent: #126b78;
+    --audit-border: #d5dee8;
+    --audit-surface: #ffffff;
+    --audit-radius: 0.75rem;
+    --audit-shadow: 0 3px 12px rgb(23 43 66 / 4%);
+}
+
+/* These few Streamlit element selectors handle page width and native widgets;
+   avoid generated class names and DOM-position selectors. */
+[data-testid="stMainBlockContainer"] {
+    max-width: 1280px;
+    padding-top: 5rem;
+    padding-bottom: 3rem;
+}
+[data-testid="stCaptionContainer"] { opacity: 1; }
+[data-testid="stCaptionContainer"] p { color: var(--audit-muted); }
+
+.st-key-page_header {
+    background: var(--audit-navy);
+    border-radius: var(--audit-radius);
+    padding: 1.6rem 2rem;
+    color: #f8fafc;
+}
+.st-key-page_header h1 {
+    color: #ffffff;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    padding: 0;
+}
+.st-key-page_header p { color: #e3eaf2; }
+.st-key-page_header [data-testid="stCaptionContainer"] p {
+    color: #b9d8df;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+}
+.audit-assurances { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.audit-assurances span {
+    color: #ecf5f6;
+    border: 1px solid #557187;
+    border-radius: 2rem;
+    padding: 0.2rem 0.75rem;
+    font-size: 0.8rem;
+}
+.audit-steps {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.6rem;
+    padding: 0.5rem 0;
+    margin: 0;
+    list-style: none;
+    color: var(--audit-muted);
+    font-size: 0.78rem;
+}
+.audit-steps li { display: flex; align-items: center; gap: 0.4rem; }
+.audit-steps span {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    border: 1px solid var(--audit-border);
+    border-radius: 50%;
+    color: var(--audit-accent);
+    background: var(--audit-surface);
+    font-weight: 700;
+}
+.st-key-upload_card, .st-key-overview_guide, .st-key-verification_detail,
+.st-key-empty_state, .st-key-report_cleaned_data, .st-key-report_flagged_invoices,
+.st-key-report_manual_sample {
+    background: var(--audit-surface);
+    box-shadow: var(--audit-shadow);
+}
+.st-key-upload_card { padding: 1.5rem; }
+.st-key-upload_card h3 { font-size: 1.15rem; }
+.st-key-empty_state { padding: 1.25rem; border-style: dashed; }
+.st-key-empty_state h3 { font-size: 1.25rem; }
+.st-key-kpi_grid [data-testid="stMetric"] {
+    background: var(--audit-surface);
+    padding: 1.25rem;
+    box-shadow: var(--audit-shadow);
+    border-top: 3px solid var(--audit-accent);
+}
+.st-key-kpi_grid [data-testid="stMetricValue"] {
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    letter-spacing: -0.04em;
+}
+.st-key-overview_guide { padding: 1.1rem 1.25rem; }
+.st-key-verification_detail { padding: 1.5rem; }
+.st-key-verification_detail [data-testid="stText"] { font-family: inherit; }
+.st-key-report_grid h4 { font-size: 1.15rem; }
+.st-key-report_description_cleaned_data, .st-key-report_description_flagged_invoices,
+.st-key-report_description_manual_sample { min-height: 7rem; }
+.st-key-report_grid [data-testid="stCaptionContainer"] { overflow-wrap: anywhere; }
+[role="tablist"] {
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--audit-border);
+    scroll-margin-top: 5rem;
+}
+[role="tab"] { padding: 0.8rem 1.1rem; font-weight: 600; }
+[role="tab"][aria-selected="true"] { color: var(--audit-accent); }
+[role="tabpanel"] { padding-top: 1.2rem; }
+
+@media (max-width: 1050px) {
+    .audit-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .st-key-kpi_grid [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-kpi_grid [data-testid="stColumn"] {
+        flex: 1 1 calc(50% - 1rem);
+        min-width: calc(50% - 1rem);
+    }
+    .st-key-report_grid [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-report_grid [data-testid="stColumn"] { flex: 1 1 100%; min-width: 100%; }
+    .st-key-report_description_cleaned_data, .st-key-report_description_flagged_invoices,
+    .st-key-report_description_manual_sample { min-height: 0; }
+}
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] { padding: 4.5rem 1rem 2rem; }
+    .st-key-page_header { padding: 1.25rem; }
+    .st-key-upload_card, .st-key-verification_detail { padding: 1rem; }
+    .st-key-kpi_grid [data-testid="stColumn"] { flex: 1 1 100%; min-width: 100%; }
+    .audit-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [role="tab"] { padding-inline: 0.65rem; }
+}

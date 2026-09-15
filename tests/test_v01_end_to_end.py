@@ -64,8 +64,14 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     assert not app.exception
     assert [m.value for m in app.metric] == ['42', '0', '1', '168']
     review = app.session_state['review']
+    download_labels = {
+        'cleaned_data.xlsx': 'Hämta rensat underlag',
+        'flagged_invoices.xlsx': 'Hämta avvikelserapport',
+        'manual_sample.xlsx': 'Hämta manuellt stickprov',
+    }
     for index, filename in enumerate(review.downloads):
-        assert app.download_button[index].label == filename
+        assert app.download_button[index].label == download_labels[filename]
+        assert app.download_button[index].key == f'download_{filename}'
         app.download_button[index].click().run()
         assert not app.exception
         with pd.ExcelFile(BytesIO(review.downloads[filename])) as workbook:

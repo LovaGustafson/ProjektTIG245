@@ -4,3 +4,21 @@ headless = true
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#126B78"
+backgroundColor = "#F4F6F9"
+secondaryBackgroundColor = "#EAF0F5"
+textColor = "#172B42"
+greenTextColor = "#146437"
+yellowTextColor = "#775008"
+font = "sans-serif"
+baseRadius = "0.75rem"
+buttonRadius = "0.5rem"
+borderColor = "#D5DEE8"
+dataframeHeaderBackgroundColor = "#EAF0F5"
+showWidgetBorder = true
+
+[client]
+toolbarMode = "viewer"
