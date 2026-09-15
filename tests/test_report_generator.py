@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+import errno
 
 import pandas as pd
 import pytest
@@ -90,7 +91,15 @@ def test_symlink_cannot_overwrite_source(tmp_path, rows):
     before = source.read_bytes()
     directory = tmp_path / "reports"
     directory.mkdir()
-    (directory / "cleaned_data.xlsx").symlink_to(source)
+    try:
+        (directory / "cleaned_data.xlsx").symlink_to(source)
+    except NotImplementedError:
+        pytest.skip("Symlink creation is not supported on this platform")
+    except OSError as exc:
+        if (getattr(exc, "winerror", None) == 1314
+                or exc.errno in (errno.EPERM, errno.EACCES, errno.ENOSYS, errno.ENOTSUP)):
+            pytest.skip(f"Symlink creation permission/support unavailable: {exc}")
+        raise
     with pytest.raises(FileExistsError):
         export(rows, directory)
     assert source.read_bytes() == before

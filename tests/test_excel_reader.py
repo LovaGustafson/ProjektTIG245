@@ -96,7 +96,7 @@ def test_missing_file(tmp_path):
 def test_directory_is_not_a_file(tmp_path):
     directory = tmp_path / "directory.xlsx"
     directory.mkdir()
-    with pytest.raises(IsADirectoryError):
+    with pytest.raises((IsADirectoryError, PermissionError)):
         read_excel(directory)
 
 

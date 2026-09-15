@@ -79,7 +79,7 @@ def test_explicit_csv_delimiter_and_encoding(tmp_path):
 
 def test_csv_duplicate_headers_blank_rows_and_quoted_newlines_are_preserved(tmp_path):
     path = tmp_path / "synthetic.csv"
-    path.write_text('\ufeffcode,code,\n001,"two\nlines",NA\n\n002,NULL,\n', encoding="utf-8")
+    path.write_text('\ufeffcode,code,\n001,"two\nlines",NA\n\n002,NULL,\n', encoding="utf-8", newline="")
     result = read_supplier_register(path)
     assert result.status == ReadStatus.LOADED
     assert result.observed_columns == ("code", "code", "")
