@@ -130,7 +130,7 @@ def test_dashboard_full_labels_transparency_and_selected_detail():
                'inte automatiskt' in i.value for i in app.info)
     assert any('Utfall' in w.value for w in app.warning)
     # Refiltering invalidates the previous row selection.
-    app.multiselect[0].select('X').run()
+    app.multiselect(key='excluded_types').select('X').run()
     assert not app.exception
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)
 
@@ -235,7 +235,7 @@ def test_kpi_review_selection_and_filter_changes_use_current_rows():
     assert not app.exception
     assert 'Radtext\nandra raden' in [text.value for text in app.text]
     assert any('Utfall' in warning.value for warning in app.warning)
-    app.multiselect[0].select('X').run()
+    app.multiselect(key='excluded_types').select('X').run()
     assert not app.exception
     assert app.dataframe[0].value.empty
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)

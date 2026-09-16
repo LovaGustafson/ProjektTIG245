@@ -9,6 +9,7 @@ from src.output.report_generator import review_tables, review_summary
 from src.presentation import SOURCE_NAMES, check_message, summary_counts
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
+from src.ui_filter_panel import filter_panel, clear_ui_filters
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -49,6 +50,7 @@ REPORT_LABELS = {
 
 
 def clear_result():
+    clear_ui_filters()
     st.session_state.pop('review_rows', None)
     st.session_state.pop('kpi_review_rows', None)
     st.session_state.pop('selected_kpi', None)
@@ -170,8 +172,8 @@ def show_result(review):
     for message in filter_column_errors(result.standardized_data):
         st.error(message)
     show_dashboard_kpis(result)
-    review_tab, excluded_tab, controls, reports = st.tabs(
-        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export'])
+    review_tab, excluded_tab, controls, reports, manual = st.tabs(
+        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
         st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
@@ -182,7 +184,7 @@ def show_result(review):
             show_validation(errors)
     with excluded_tab:
         st.caption('Raderna finns kvar här med samtliga exkluderingsorsaker.')
-        st.dataframe(display_dataframe(excluded), hide_index=True, width='stretch')
+        show_filtered_table(excluded, view='excluded')
     with controls:
         st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
         st.info('Attestkontroll – ej tillgänglig. Attestregister saknas.')
@@ -190,6 +192,13 @@ def show_result(review):
         show_overview(result, flagged, errors)
     with reports:
         show_reports(review)
+    with manual:
+        st.caption('Det befintliga manuella stickprovet, valt efter analysen. '
+                   'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
+        # The reader supplies unique row indexes; grouping/sampling retain them.
+        positions = [position for verification in result.manual_sample for position in verification.rows.index]
+        sample = result.original_data.loc[positions].copy(deep=True)
+        show_filtered_table(sample, view='manual')
 
 
 def select_kpi(key):
@@ -217,7 +226,7 @@ def show_dashboard_kpis(result):
         if selected == 'total':
             st.write('Alla inlästa datarader visas här. Metadata-rader ovanför den identifierade '
                      'header-raden räknas inte, och header-raden räknas inte som en datarad.')
-            st.dataframe(display_dataframe(result.original_data), hide_index=True, width='stretch')
+            show_filtered_table(result.original_data, view='kpi_total')
         elif selected == 'review':
             st.info(REVIEW_EXPLANATION)
             for message in filter_column_errors(result.standardized_data):
@@ -229,20 +238,26 @@ def show_dashboard_kpis(result):
             st.caption('Aktiva exkluderingar och antal träffar per värde, inklusive värden utan träffar.')
             st.dataframe(display_dataframe(per_value), hide_index=True, width='stretch')
             st.caption('Samtliga rader som träffade denna regel, även de som träffade båda reglerna.')
-            st.dataframe(display_dataframe(rows), hide_index=True, width='stretch')
+            show_filtered_table(rows, view=f'kpi_{selected}')
         else:
             _, excluded = review_tables(result.original_data, result.filtering)
             st.write('Alla bortfiltrerade källrader visas en gång. Om en rad träffade både konto- '
                      'och verifikationstypsregeln visas båda exkluderingsorsakerna.')
-            st.dataframe(display_dataframe(excluded), hide_index=True, width='stretch')
+            show_filtered_table(excluded, view='kpi_excluded')
+
+
+def show_filtered_table(data, *, view):
+    filtered = filter_panel(data, view=view)
+    st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch')
 
 
 def show_review_table(result, kept, *, key):
-    selection = st.dataframe(display_dataframe(kept), hide_index=True, width='stretch',
+    filtered = filter_panel(kept, view=key, selection_key=key)
+    selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
                              key=key, on_select='rerun', selection_mode='single-row')
     st.caption('Markera en rad i tabellen för att visa källvärden och valideringsvarningar.')
     if selection.selection.rows:
-        show_review_row(result, selection.selection.rows[0])
+        show_review_row(result, filtered.positions[selection.selection.rows[0]])
 
 
 def show_review_row(result, position):
@@ -270,7 +285,7 @@ def show_filters(review):
                if list(data.columns).count('verification_type') == 1 else [])
     options = sorted(set(defaults) | set(present))
     with st.sidebar:
-        st.subheader('Filter')
+        st.subheader('Exkluderingsregler (MoSCoW)')
         st.caption('Valda typer exkluderas. Ta bort ett val för att återinkludera typen.')
         if st.button('Återställ filter till standard'):
             st.session_state['excluded_types'] = defaults
@@ -281,6 +296,7 @@ def show_filters(review):
     previous = tuple(sorted(defaults)) if review.excluded_types is None else review.excluded_types
     if tuple(sorted(selected)) != previous:
         updated = analyze_upload(review.source_content, excluded_verification_types=selected)
+        clear_ui_filters()
         st.session_state.pop('selected_verification', None)
         st.session_state.pop('review_rows', None)
         st.session_state.pop('kpi_review_rows', None)

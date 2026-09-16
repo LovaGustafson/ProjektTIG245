@@ -62,18 +62,18 @@ def test_dynamic_reinclude_additional_type_reset_and_upload_change():
     app.button[0].click().run()
     assert not app.exception
     assert app.button(key="kpi_review").label.split("**")[1] == '2'
-    assert 'NEW' in app.multiselect[0].options
-    app.multiselect[0].unselect('KR01').run()
+    assert 'NEW' in app.multiselect(key='excluded_types').options
+    app.multiselect(key='excluded_types').unselect('KR01').run()
     assert not app.exception
     assert app.button(key="kpi_review").label.split("**")[1] == '3'
     assert app.tabs[0].dataframe[0].value['Vernr'].tolist() == ['2', '5', '6']
     review = app.session_state['review']
     assert len(pd.read_excel(BytesIO(review.downloads['granskning.xlsx']))) == 3
-    app.multiselect[0].select('NEW').run()
+    app.multiselect(key='excluded_types').select('NEW').run()
     assert app.button(key="kpi_review").label.split("**")[1] == '2'
     next(b for b in app.button if b.label == 'Återställ filter till standard').click().run()
-    assert 'KR01' in app.multiselect[0].value
-    assert 'NEW' not in app.multiselect[0].value
+    assert 'KR01' in app.multiselect(key='excluded_types').value
+    assert 'NEW' not in app.multiselect(key='excluded_types').value
     assert app.button(key="kpi_review").label.split("**")[1] == '2'
     messages = [message.value for message in app.info]
     assert 'Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.' in messages
@@ -138,9 +138,9 @@ def test_metadata_header_upload_filters_rendering_and_export(tmp_path):
     assert {'account', 'verification_type'} <= set(review.result.standardized_data.columns)
     assert review.result.filtering.account_count == 3
     assert review.result.filtering.verification_type_count == 3
-    assert app.multiselect[0].value == load_exclusions()['excluded_verification_types']
-    assert 'NEW' in app.multiselect[0].options
-    assert 'NEW' not in app.multiselect[0].value
+    assert app.multiselect(key='excluded_types').value == load_exclusions()['excluded_verification_types']
+    assert 'NEW' in app.multiselect(key='excluded_types').options
+    assert 'NEW' not in app.multiselect(key='excluded_types').value
     kept = app.tabs[0].dataframe[0].value
     removed = app.tabs[1].dataframe[0].value
     assert kept.columns.tolist() == data.columns.tolist()
