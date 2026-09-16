@@ -119,3 +119,39 @@ def generate_reports(
             path.unlink()
         raise
     return paths
+
+
+def review_tables(original_data, filtering):
+    """Use source headers/values; keep metadata distinct even on name collision."""
+    kept = [i for i, reason in enumerate(filtering.reasons) if not reason]
+    removed = [i for i, reason in enumerate(filtering.reasons) if reason]
+    review = original_data.iloc[kept].copy(deep=True)
+    excluded = original_data.iloc[removed].copy(deep=True)
+    label = 'Exkluderingsorsak'
+    while label in excluded.columns:
+        label = '_' + label
+    excluded[label] = [filtering.reasons[i] for i in removed]
+    return review, excluded
+
+
+def review_summary(original_data, filtering):
+    return {
+        'Totalt antal rader': len(original_data),
+        'Kvar för granskning': len(filtering.cleaned_data),
+        'Exkluderade på grund av konto': filtering.account_count,
+        'Exkluderade på grund av verifikationstyp': filtering.verification_type_count,
+        'Totalt bortfiltrerade': len(filtering.excluded_data),
+    }
+
+
+def review_workbooks(original_data, filtering):
+    review, excluded = review_tables(original_data, filtering)
+    summary = pd.DataFrame(list(review_summary(original_data, filtering).items()),
+                           columns=['Mått', 'Antal'])
+    return {
+        'granskning.xlsx': _workbook({'Granskning': review}),
+        'bortfiltrerade.xlsx': _workbook({'Bortfiltrerade': excluded}),
+        'samlad_kontrollfil.xlsx': _workbook({
+            'Granskning': review, 'Bortfiltrerade': excluded, 'Sammanfattning': summary,
+        }),
+    }

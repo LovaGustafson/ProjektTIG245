@@ -1,3 +1,23 @@
+# Aktuell avgränsning – MoSCoW, september 2026
+
+Detta tillägg preciserar prototypens nuvarande version och har företräde framför
+äldre framtidsbeskrivningar nedan:
+
+- De 42 unika standardexkluderingarna för Vertyp finns i `config/settings.yaml`.
+  Användaren kan återinkludera dem och exkludera andra förekommande typer i UI.
+- Konto 7698/7699 exkluderas genom normaliserad jämförelse av tal/text.
+- Kolumnnamn, aldrig Excel-positioner, styr mappning och filtrering.
+  Konto och Vertyp behövs för fullständig filtrering; saknade kolumner visas som fel.
+- Alla rader bevaras i Granskning eller Bortfiltrerade med samtliga filterorsaker.
+  Originaldata och källfil ändras aldrig. Tomma filtervärden exkluderas inte.
+- Alla kvarvarande verifikationer analyseras före separat manuellt stickprov.
+- UI har Granskning, Bortfiltrerade, Kontroller och Export samt filter och radmått.
+- Nya Excel-nedladdningar innehåller granskning, bortfiltrerade och sammanfattning.
+- Upphandlings- och attestregister saknas. Kontrollerna, inklusive rätt attestant,
+  är ej tillgängliga och ger inga simulerade godkännanden eller underkännanden.
+- TODO / AK: leverantörsidentifiering, registerstruktur, attestregler och tidigare
+  obesvarade fältbetydelser. OCR och produktionsintegration ingår inte.
+
 # Steg 1
 
 

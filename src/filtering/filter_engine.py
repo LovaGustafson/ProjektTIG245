@@ -1,5 +1,6 @@
-"""Apply configured row exclusions without changing source values."""
+"""Apply configured exclusions to comparison copies, retaining all source rows."""
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import pandas as pd
 import yaml
@@ -12,31 +13,74 @@ class FilterResult:
     cleaned_data: pd.DataFrame
     excluded_data: pd.DataFrame
     todos: tuple[str, ...]
+    reasons: tuple[str, ...]
+    account_count: int
+    verification_type_count: int
 
 
-def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH) -> FilterResult:
-    """Exact-value exclusions; null configuration remains explicitly unresolved.
+def normalize_type(value):
+    return '' if pd.isna(value) else str(value).strip()
 
-    Missing/ambiguous columns cannot support an exclusion and are retained.
-    Numeric/blank/invalid values are not normalized or silently discarded.
-    """
+
+def normalize_account(value):
+    text = normalize_type(value)
+    try:
+        number = Decimal(text)
+        if number.is_finite() and number == number.to_integral_value():
+            return str(int(number))
+    except InvalidOperation:
+        pass
+    return text
+
+
+def load_exclusions(settings_path=DEFAULT_SETTINGS_PATH):
     with Path(settings_path).open(encoding='utf-8') as stream:
         settings = yaml.safe_load(stream)
     if not isinstance(settings, dict):
         raise ValueError('Settings must be a mapping')
-    excluded = pd.Series(False, index=data.index)
-    todos = []
-    for field, key in [('account', 'excluded_accounts'),
-                       ('verification_type', 'excluded_verification_types')]:
+    result = {}
+    for key in ('excluded_accounts', 'excluded_verification_types'):
         values = settings.get(key)
+        if values is not None and (not isinstance(values, list) or
+                                  any(not isinstance(v, str) for v in values)):
+            raise ValueError(f'{key} must be a list of strings or null')
+        result[key] = values
+    return result
+
+
+def filter_column_errors(data):
+    return tuple(f"Kolumnen '{label}' saknas eller förekommer flera gånger. "
+                 'Filtreringen kan inte genomföras fullständigt.'
+                 for field, label in [('account', 'Konto'), ('verification_type', 'Vertyp')]
+                 if list(data.columns).count(field) != 1)
+
+
+def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH,
+                excluded_verification_types=None) -> FilterResult:
+    settings = load_exclusions(settings_path)
+    if excluded_verification_types is not None:
+        settings['excluded_verification_types'] = list(excluded_verification_types)
+    reasons = [[] for _ in range(len(data))]
+    counts = []
+    todos = list(filter_column_errors(data))
+    for field, key, label, normalize in [
+        ('account', 'excluded_accounts', 'konto', normalize_account),
+        ('verification_type', 'excluded_verification_types', 'verifikationstyp', normalize_type),
+    ]:
+        values = settings[key]
+        count = 0
         if values is None:
             todos.append(f'TODO / awaiting AK: {key}')
-            continue
-        if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
-            raise ValueError(f'{key} must be a list of strings or null')
-        if list(data.columns).count(field) != 1:
-            todos.append(f'TODO: exclusion unavailable for missing/ambiguous {field}')
-            continue
-        excluded |= data[field].isin(values)
-    return FilterResult(data.loc[~excluded].copy(deep=True),
-                        data.loc[excluded].copy(deep=True), tuple(todos))
+        elif list(data.columns).count(field) == 1:
+            excluded = {normalize(v) for v in values} - {''}
+            for position, value in enumerate(data[field]):
+                normalized = normalize(value)
+                if normalized in excluded:
+                    reasons[position].append(f'{label} {normalized}')
+                    count += 1
+        counts.append(count)
+    mask = [bool(reason) for reason in reasons]
+    return FilterResult(data.iloc[[i for i, hit in enumerate(mask) if not hit]].copy(deep=True),
+                        data.iloc[[i for i, hit in enumerate(mask) if hit]].copy(deep=True),
+                        tuple(todos), tuple('Exkluderad – ' + '; '.join(r) if r else '' for r in reasons),
+                        *counts)
