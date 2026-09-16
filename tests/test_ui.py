@@ -75,7 +75,7 @@ def test_streamlit_result_screen():
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('kpi_')] == ['1', '1', '0', '0', '0']
     assert [m.value for m in app.metric] == ['1', '0', '1', '4']
     assert [m.label for m in app.metric] == ['Analyserade', 'Flaggade', 'Valideringsfel', 'Ej kontrollerade']
-    assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
+    assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll']
     assert len(app.get('download_button')) == 5
     assert app.warning
     assert 'inte att alla kontroller är godkända' in app.warning[0].value
