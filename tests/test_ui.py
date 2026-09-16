@@ -72,8 +72,9 @@ def test_streamlit_result_screen():
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert [m.value for m in app.metric] == ['1', '1', '0', '0', '0', '1', '0', '1', '4']
-    assert [m.label for m in app.metric][5:] == ['Analyserade', 'Flaggade', 'Valideringsfel', 'Ej kontrollerade']
+    assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('kpi_')] == ['1', '1', '0', '0', '0']
+    assert [m.value for m in app.metric] == ['1', '0', '1', '4']
+    assert [m.label for m in app.metric] == ['Analyserade', 'Flaggade', 'Valideringsfel', 'Ej kontrollerade']
     assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
     assert len(app.get('download_button')) == 5
     assert app.warning
@@ -96,7 +97,7 @@ def test_flagged_selection_shows_all_reasons():
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert app.metric[6].value == '1'
+    assert app.metric[1].value == '1'
     assert app.selectbox[0].options == ['001']
     assert 'First' in [item.value for item in app.text]
     assert 'Second' in [item.value for item in app.text]

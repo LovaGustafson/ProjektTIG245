@@ -127,3 +127,46 @@
     .audit-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     [role="tab"] { padding-inline: 0.65rem; }
 }
+
+/* Full metric labels, including the nested Markdown paragraph. */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    height: auto;
+}
+.st-key-dashboard_kpis button {
+    min-height: 10rem;
+    height: 100%;
+    padding: 1rem;
+    border-radius: var(--audit-radius);
+    border-top: 3px solid var(--audit-accent);
+    box-shadow: var(--audit-shadow);
+    text-align: left;
+    justify-content: flex-start;
+}
+.st-key-dashboard_kpis button p {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+}
+.st-key-dashboard_kpis button strong {
+    font-size: 2rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+}
+.st-key-dashboard_kpis button:hover { border-color: var(--audit-accent); }
+.st-key-dashboard_kpis button:focus-visible {
+    outline: 3px solid var(--audit-accent);
+    outline-offset: 3px;
+}
+@media (max-width: 1050px) {
+    .st-key-dashboard_kpis [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-dashboard_kpis [data-testid="stColumn"] { flex: 1 1 45%; min-width: 45%; }
+}
+@media (max-width: 640px) {
+    .st-key-dashboard_kpis [data-testid="stColumn"] { flex: 1 1 100%; min-width: 100%; }
+}

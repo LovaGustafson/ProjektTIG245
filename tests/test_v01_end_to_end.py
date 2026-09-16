@@ -62,7 +62,9 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert [m.value for m in app.metric] == ['44', '43', '1', '0', '1', '42', '0', '1', '168']
+    assert [b.label.split('**')[1] for b in app.button
+            if b.key and b.key.startswith('kpi_')] == ['44', '43', '1', '0', '1']
+    assert [m.value for m in app.metric] == ['42', '0', '1', '168']
     review = app.session_state['review']
     download_labels = {
         'granskning.xlsx': 'Kvar för granskning',

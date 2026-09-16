@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import load_workbook
 
-from src.mapping.column_mapper import COLUMN_MAPPING
+from src.mapping.column_mapper import COLUMN_MAPPING, COLUMN_ALIASES
 
 
 class ExcelReadError(ValueError):
@@ -20,6 +20,8 @@ HEADER_FIELDS = {'Vernr', 'Vrad', 'Verdatum', 'Utfall', 'Konto', 'Vertyp',
 HEADER_ALIASES = {alias: COLUMN_MAPPING[source]
                   for source in HEADER_FIELDS
                   for alias in (source, COLUMN_MAPPING[source])}
+HEADER_ALIASES.update({name: field for name, field in COLUMN_ALIASES.items()
+                       if field == 'verification_date'})
 
 
 def _header_position(preview):

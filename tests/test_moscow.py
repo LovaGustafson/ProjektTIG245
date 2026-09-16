@@ -61,20 +61,20 @@ def test_dynamic_reinclude_additional_type_reset_and_upload_change():
     app.file_uploader[0].set_value(('invoices.xlsx', content(source()), MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert app.metric[1].value == '2'
+    assert app.button(key="kpi_review").label.split("**")[1] == '2'
     assert 'NEW' in app.multiselect[0].options
     app.multiselect[0].unselect('KR01').run()
     assert not app.exception
-    assert app.metric[1].value == '3'
+    assert app.button(key="kpi_review").label.split("**")[1] == '3'
     assert app.tabs[0].dataframe[0].value['Vernr'].tolist() == ['2', '5', '6']
     review = app.session_state['review']
     assert len(pd.read_excel(BytesIO(review.downloads['granskning.xlsx']))) == 3
     app.multiselect[0].select('NEW').run()
-    assert app.metric[1].value == '2'
+    assert app.button(key="kpi_review").label.split("**")[1] == '2'
     next(b for b in app.button if b.label == 'Återställ filter till standard').click().run()
     assert 'KR01' in app.multiselect[0].value
     assert 'NEW' not in app.multiselect[0].value
-    assert app.metric[1].value == '2'
+    assert app.button(key="kpi_review").label.split("**")[1] == '2'
     messages = [message.value for message in app.info]
     assert 'Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.' in messages
     assert 'Attestkontroll – ej tillgänglig. Attestregister saknas.' in messages
@@ -82,8 +82,8 @@ def test_dynamic_reinclude_additional_type_reset_and_upload_change():
     assert not app.metric
     app.button[0].click().run()
     assert not app.exception
-    assert app.metric[0].value == '1'
-    assert app.metric[1].value == '0'
+    assert app.button(key="kpi_total").label.split("**")[1] == '1'
+    assert app.button(key="kpi_review").label.split("**")[1] == '0'
 
 
 @pytest.mark.parametrize('missing', ['Konto', 'Vertyp'])
@@ -132,8 +132,8 @@ def test_metadata_header_upload_filters_rendering_and_export(tmp_path):
     app.button[0].click().run()
     assert not app.exception
     assert not app.error
-    assert app.metric[0].value == '7'
-    assert app.metric[1].value == '2'
+    assert app.button(key="kpi_total").label.split("**")[1] == '7'
+    assert app.button(key="kpi_review").label.split("**")[1] == '2'
     review = app.session_state['review']
     assert {'account', 'verification_type'} <= set(review.result.standardized_data.columns)
     assert review.result.filtering.account_count == 3
