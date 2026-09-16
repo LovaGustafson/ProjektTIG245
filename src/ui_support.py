@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow as pa
 
 from src.output.report_generator import review_workbooks
-from src.presentation import context_fields, validation_records
+from src.presentation import context_fields, validation_records, validation_message
 from src.pipeline import PipelineResult, run_pipeline
 
 
@@ -75,3 +75,31 @@ def display_dataframe(data) -> pd.DataFrame:
         except (pa.ArrowException, TypeError, ValueError, OverflowError):
             display.isetitem(position, column.astype('string'))
     return display
+
+
+REVIEW_EXPLANATION = (
+    'Denna rad är kvar eftersom den inte träffar någon aktiv filterregel för konto '
+    'eller verifikationstyp. Det betyder inte automatiskt att raden är felaktig '
+    'eller en avvikelse. Den är kvar för fortsatt manuell kontroll.'
+)
+
+
+def filter_details(result, field):
+    """Show evidence recorded by the filter engine, including overlapping hits."""
+    matches = result.filtering.rule_details[field]
+    label = 'Konto' if field == 'account' else 'Vertyp'
+    counts = pd.DataFrame([(value, len(positions)) for value, positions in matches.items()],
+                          columns=[label, 'Antal rader'])
+    positions = sorted(position for group in matches.values() for position in group)
+    return counts, result.original_data.iloc[positions].copy(deep=True)
+
+
+def review_row_detail(result, selected_position):
+    """Resolve a table position to its source row, never by invoice identity."""
+    positions = [i for i, reason in enumerate(result.filtering.reasons) if not reason]
+    source_position = positions[selected_position]
+    row = result.original_data.iloc[source_position]
+    fields = pd.DataFrame({'Fält': list(row.index), 'Källvärde': list(row.values)})
+    warnings = [validation_message(error)
+                for error in result.validation.rows[source_position].validation_errors]
+    return fields, warnings

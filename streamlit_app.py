@@ -2,11 +2,13 @@
 from pathlib import Path
 
 import streamlit as st
+import pandas as pd
 
 from src.filtering.filter_engine import load_exclusions, normalize_type, filter_column_errors
 from src.output.report_generator import review_tables, review_summary
 from src.presentation import SOURCE_NAMES, check_message, summary_counts
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
+from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -47,6 +49,9 @@ REPORT_LABELS = {
 
 
 def clear_result():
+    st.session_state.pop('review_rows', None)
+    st.session_state.pop('kpi_review_rows', None)
+    st.session_state.pop('selected_kpi', None)
     st.session_state.pop('review', None)
     st.session_state.pop('selected_verification', None)
     st.session_state.pop('excluded_types', None)
@@ -164,18 +169,14 @@ def show_result(review):
                    icon=':material/warning:')
     for message in filter_column_errors(result.standardized_data):
         st.error(message)
-    counts = review_summary(result.original_data, result.filtering)
-    for column, (label, value) in zip(st.columns(5), counts.items()):
-        column.metric(label, value, border=True)
-    st.caption('Antalen avser rader. En rad kan träffa både konto- och typregeln; '
-               'totalt bortfiltrerade räknar varje rad en gång.')
+    show_dashboard_kpis(result)
     review_tab, excluded_tab, controls, reports = st.tabs(
         ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
         st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
                    'Även rader med valideringsfel finns kvar för granskning.')
-        st.dataframe(display_dataframe(kept), hide_index=True, width='stretch')
+        show_review_table(result, kept, key='review_rows')
         show_deviations(result, flagged)
         with st.expander('Valideringsfel', expanded=not errors.empty):
             show_validation(errors)
@@ -189,6 +190,77 @@ def show_result(review):
         show_overview(result, flagged, errors)
     with reports:
         show_reports(review)
+
+
+def select_kpi(key):
+    if st.session_state.get('selected_kpi') != key:
+        st.session_state.pop('kpi_review_rows', None)
+    st.session_state['selected_kpi'] = key
+
+
+def show_dashboard_kpis(result):
+    counts = review_summary(result.original_data, result.filtering)
+    keys = ['total', 'review', 'account', 'verification_type', 'excluded']
+    with st.container(key='dashboard_kpis'):
+        for column, key, (label, value) in zip(st.columns(5), keys, counts.items()):
+            column.button(f'**{value}**  \n{label}', key=f'kpi_{key}', width='stretch',
+                          help=f'Visa rader: {label}', on_click=select_kpi, args=(key,),
+                          type='primary' if st.session_state.get('selected_kpi') == key else 'secondary')
+    st.caption('Klicka på ett kort för att visa rader och förklaring. Antalen avser rader. '
+               'En rad kan träffa både konto- och typregeln; '
+               'totalt bortfiltrerade räknar varje rad en gång.')
+    selected = st.session_state.get('selected_kpi')
+    if selected not in keys:
+        return
+    with st.container(border=True, key='kpi_detail'):
+        st.subheader(list(counts)[keys.index(selected)])
+        if selected == 'total':
+            st.write('Alla inlästa datarader visas här. Metadata-rader ovanför den identifierade '
+                     'header-raden räknas inte, och header-raden räknas inte som en datarad.')
+            st.dataframe(display_dataframe(result.original_data), hide_index=True, width='stretch')
+        elif selected == 'review':
+            st.info(REVIEW_EXPLANATION)
+            for message in filter_column_errors(result.standardized_data):
+                st.warning(message)
+            kept, _ = review_tables(result.original_data, result.filtering)
+            show_review_table(result, kept, key='kpi_review_rows')
+        elif selected in ('account', 'verification_type'):
+            per_value, rows = filter_details(result, selected)
+            st.caption('Aktiva exkluderingar och antal träffar per värde, inklusive värden utan träffar.')
+            st.dataframe(display_dataframe(per_value), hide_index=True, width='stretch')
+            st.caption('Samtliga rader som träffade denna regel, även de som träffade båda reglerna.')
+            st.dataframe(display_dataframe(rows), hide_index=True, width='stretch')
+        else:
+            _, excluded = review_tables(result.original_data, result.filtering)
+            st.write('Alla bortfiltrerade källrader visas en gång. Om en rad träffade både konto- '
+                     'och verifikationstypsregeln visas båda exkluderingsorsakerna.')
+            st.dataframe(display_dataframe(excluded), hide_index=True, width='stretch')
+
+
+def show_review_table(result, kept, *, key):
+    selection = st.dataframe(display_dataframe(kept), hide_index=True, width='stretch',
+                             key=key, on_select='rerun', selection_mode='single-row')
+    st.caption('Markera en rad i tabellen för att visa källvärden och valideringsvarningar.')
+    if selection.selection.rows:
+        show_review_row(result, selection.selection.rows[0])
+
+
+def show_review_row(result, position):
+    fields, warnings = review_row_detail(result, position)
+    with st.container(border=True):
+        st.subheader('Vald rad – detaljer')
+        st.info(REVIEW_EXPLANATION)
+        for message in filter_column_errors(result.standardized_data):
+            st.warning(message)
+        for message in warnings:
+            st.warning(message)
+        if not warnings:
+            st.caption('Inga valideringsvarningar har rapporterats för raden.')
+        st.caption('Alla tillgängliga originalfält visas. Leverantörsidentifiering väntar på AK:s bekräftelse.')
+        # Vertical text avoids truncating long source texts inside table cells.
+        for name, value in fields.itertuples(index=False, name=None):
+            st.text(str(name))
+            st.text('—' if pd.isna(value) else str(value))
 
 
 def show_filters(review):
@@ -210,6 +282,8 @@ def show_filters(review):
     if tuple(sorted(selected)) != previous:
         updated = analyze_upload(review.source_content, excluded_verification_types=selected)
         st.session_state.pop('selected_verification', None)
+        st.session_state.pop('review_rows', None)
+        st.session_state.pop('kpi_review_rows', None)
         st.session_state['review'] = updated
         return updated
     return review

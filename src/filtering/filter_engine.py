@@ -16,6 +16,7 @@ class FilterResult:
     reasons: tuple[str, ...]
     account_count: int
     verification_type_count: int
+    rule_details: dict[str, dict[str, list[int]]]
 
 
 def normalize_type(value):
@@ -62,12 +63,15 @@ def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH,
         settings['excluded_verification_types'] = list(excluded_verification_types)
     reasons = [[] for _ in range(len(data))]
     counts = []
+    details = {}
     todos = list(filter_column_errors(data))
     for field, key, label, normalize in [
         ('account', 'excluded_accounts', 'konto', normalize_account),
         ('verification_type', 'excluded_verification_types', 'verifikationstyp', normalize_type),
     ]:
         values = settings[key]
+        configured = sorted({normalize(v) for v in values or []} - {''})
+        matches = {value: [] for value in configured}
         count = 0
         if values is None:
             todos.append(f'TODO / awaiting AK: {key}')
@@ -76,11 +80,13 @@ def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH,
             for position, value in enumerate(data[field]):
                 normalized = normalize(value)
                 if normalized in excluded:
+                    matches[normalized].append(position)
                     reasons[position].append(f'{label} {normalized}')
                     count += 1
         counts.append(count)
+        details[field] = matches
     mask = [bool(reason) for reason in reasons]
     return FilterResult(data.iloc[[i for i, hit in enumerate(mask) if not hit]].copy(deep=True),
                         data.iloc[[i for i, hit in enumerate(mask) if hit]].copy(deep=True),
                         tuple(todos), tuple('Exkluderad – ' + '; '.join(r) if r else '' for r in reasons),
-                        *counts)
+                        *counts, details)
