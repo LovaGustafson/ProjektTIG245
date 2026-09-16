@@ -21,6 +21,7 @@ from src.presentation import summary_counts
 
 @dataclass
 class PipelineResult:
+    original_data: pd.DataFrame
     standardized_data: pd.DataFrame
     validation: ValidationResult
     filtering: FilterResult
@@ -35,7 +36,7 @@ class PipelineResult:
 def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                  sheet_name=0, date_format=None, image_references=None,
                  supplier_register=None, attestation_register=None,
-                 rule_options=None, rules=None) -> PipelineResult:
+                 rule_options=None, rules=None, excluded_verification_types=None) -> PipelineResult:
     """Run analysis of every grouped verification before selecting the sample.
 
     Validation metadata refers to standardized_data positions before filtering.
@@ -52,9 +53,11 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     the existing report generator exports only its three supported reports.
     TODO: a persistent report format for all validation/nonflagged results.
     """
-    standardized = map_columns(read_excel(input_path, sheet_name=sheet_name))
+    original = read_excel(input_path, sheet_name=sheet_name)
+    standardized = map_columns(original)
     validation = validate(standardized, date_format=date_format)
-    filtering = filter_rows(standardized, settings_path=settings_path)
+    filtering = filter_rows(standardized, settings_path=settings_path,
+                            excluded_verification_types=excluded_verification_types)
     # Route using validator evidence, rather than reimplementing identity checks.
     unusable = {row.row_position for row in validation.rows
                 if any(error.field == 'verification_id' for error in row.validation_errors)}
@@ -85,5 +88,5 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',
     )
-    return PipelineResult(standardized, validation, filtering, ungrouped,
+    return PipelineResult(original, standardized, validation, filtering, ungrouped,
                           verifications, results, sample, paths, todos)

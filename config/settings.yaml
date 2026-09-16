@@ -3,9 +3,50 @@ excluded_accounts:
   - "7698"
   - "7699"
 
-# TODO: awaiting AK confirmation of excluded Vertyp values.
-# null means unresolved, not an approved empty list.
-excluded_verification_types: null
+# Standard exclusions supplied in the MoSCoW requirements.
+excluded_verification_types:
+  - "AAHV90"
+  - "AAHV94"
+  - "AAHVOH"
+  - "AAHVOSEKBP"
+  - "AR"
+  - "EKBP"
+  - "EKBR"
+  - "EKHVOH"
+  - "EKINTB"
+  - "FAPL"
+  - "FAPO"
+  - "FBFM"
+  - "FFLE"
+  - "FFRIB"
+  - "FHAMB"
+  - "FHER"
+  - "FINTF"
+  - "FMIV"
+  - "FLAK"
+  - "FLMN"
+  - "FMATB"
+  - "FMDA"
+  - "FNED5"
+  - "FPATO"
+  - "FPAX"
+  - "FPFINT"
+  - "FSECT"
+  - "FVTF"
+  - "FWINB"
+  - "FXTMP"
+  - "HVMK"
+  - "KR01"
+  - "KRMB"
+  - "KRN1EX"
+  - "KRN2EX"
+  - "KRQ1IN"
+  - "KRQ2IN"
+  - "KRW1"
+  - "KRW9"
+  - "LRAB"
+  - "ZZOM"
+  - "ZZUP"
 
 # TODO: awaiting AK confirmation of mandatory business information and scope.
 # image_reference, signature and attestation are examples, not confirmed rules.

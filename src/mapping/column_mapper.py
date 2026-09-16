@@ -14,4 +14,5 @@ def map_columns(data: pd.DataFrame) -> pd.DataFrame:
     TODO: AK must confirm Mm/Pg/Sign/Att/Ksansv/Bild meanings. These are only
     the standardized labels specified in PROJECT_SPEC.md, not interpretations.
     """
-    return data.rename(columns=COLUMN_MAPPING).copy(deep=True)
+    return data.rename(columns=lambda name: COLUMN_MAPPING.get(name.strip(), name.strip())
+                       if isinstance(name, str) else name).copy(deep=True)

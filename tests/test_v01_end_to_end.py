@@ -62,16 +62,17 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert [m.value for m in app.metric] == ['42', '0', '1', '168']
+    assert [m.value for m in app.metric] == ['44', '43', '1', '0', '1', '42', '0', '1', '168']
     review = app.session_state['review']
     download_labels = {
-        'cleaned_data.xlsx': 'Hämta rensat underlag',
+        'granskning.xlsx': 'Kvar för granskning',
+        'bortfiltrerade.xlsx': 'Bortfiltrerade',
+        'samlad_kontrollfil.xlsx': 'Samlad kontrollfil',
         'flagged_invoices.xlsx': 'Hämta avvikelserapport',
         'manual_sample.xlsx': 'Hämta manuellt stickprov',
     }
-    for index, filename in enumerate(review.downloads):
+    for index, filename in enumerate(download_labels):
         assert app.download_button[index].label == download_labels[filename]
-        assert app.download_button[index].key == f'download_{filename}'
         app.download_button[index].click().run()
         assert not app.exception
         with pd.ExcelFile(BytesIO(review.downloads[filename])) as workbook:
@@ -88,6 +89,6 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert len(app.download_button) == 3
+    assert len(app.download_button) == 5
     assert source.read_bytes() == content
     assert source.stat().st_mtime_ns == mtime

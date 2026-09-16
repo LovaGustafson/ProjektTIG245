@@ -155,5 +155,65 @@ def test_preserves_duplicate_headers_formulas_and_excel_errors(tmp_path):
     workbook.save(path)
     workbook.close()
     result = read_excel(path)
-    assert result.columns.tolist() == ["Extra", "Extra", None, "Formula", "Error"]
+    assert result.columns.tolist() == ["Extra", "Extra", "Namnlös kolumn 3", "Formula", "Error"]
     assert result.iloc[0].tolist() == ["001", "NA", "value", "=1+2", "#DIV/0!"]
+
+
+@pytest.mark.parametrize('header_row', [1, 7, 50])
+@pytest.mark.parametrize('standardized', [False, True])
+def test_detects_schema_after_metadata_and_reads_beyond_preview(tmp_path, header_row, standardized):
+    from src.mapping.column_mapper import COLUMN_MAPPING
+    path = tmp_path / 'metadata.xlsx'
+    book = Workbook()
+    sheet = book.active
+    for i in range(header_row - 1):
+        sheet.append([None, 'Verifikationslista urval VO' if i == 0 else
+                      'Tagit bort: VERTYP: AAHV90, AAHV94, NEW', None, None])
+    headers = ['Vernr', 'Vrad', 'Verdatum', 'Utfall', 'Konto', 'Vertyp', 'Huvudtext', 'Radtext']
+    if standardized:
+        headers = [COLUMN_MAPPING[name] for name in headers]
+    headers = [' ' + name + ' ' for name in headers]
+    sheet.append(headers + [None, None, 'Leverantör', 'Namnlös kolumn 9', 'Tom men namngiven'])
+    for i in range(65):
+        sheet.append([str(i), 1, '2026-09-03', 10, 4000, 'NEW', None, None,
+                      'okänd uppgift' if i == 64 else None, None, 'Bevaras', None, None])
+    book.save(path)
+    book.close()
+    before, mtime = path.read_bytes(), path.stat().st_mtime_ns
+    result = read_excel(path)
+    assert len(result) == 65
+    assert result.columns.tolist() == headers + [
+        '_Namnlös kolumn 9', 'Leverantör', 'Namnlös kolumn 9', 'Tom men namngiven']
+    assert result.iloc[-1, 0] == '64'
+    assert result.iloc[-1]['_Namnlös kolumn 9'] == 'okänd uppgift'
+    assert result.columns.is_unique
+    assert path.read_bytes() == before
+    assert path.stat().st_mtime_ns == mtime
+
+
+def test_header_score_uses_distinct_fields_and_strongest_match(tmp_path):
+    path = tmp_path / 'candidates.xlsx'
+    book = Workbook()
+    sheet = book.active
+    sheet.append(['Vernr'] * 12)
+    sheet.append(['Vernr', 'Vrad', 'Konto'])
+    sheet.append(['Vernr', 'Vrad', 'Verdatum', 'Utfall', 'Konto', 'Vertyp'])
+    sheet.append(['001', 1, '2026-09-03', 10, '4000', 'NEW'])
+    book.save(path)
+    book.close()
+    result = read_excel(path)
+    assert result.columns.tolist() == ['Vernr', 'Vrad', 'Verdatum', 'Utfall', 'Konto', 'Vertyp']
+    assert len(result) == 1
+    assert result.iloc[0, 0] == '001'
+
+
+def test_multiple_populated_blank_headers_get_unique_names(tmp_path):
+    path = tmp_path / 'unnamed.xlsx'
+    book = Workbook()
+    book.active.append(['Vernr', 'Vrad', 'Konto', None, ' ', None])
+    book.active.append(['001', 1, '4000', 'keep', 'also keep', None])
+    book.save(path)
+    book.close()
+    result = read_excel(path)
+    assert result.columns.tolist() == ['Vernr', 'Vrad', 'Konto', 'Namnlös kolumn 4', 'Namnlös kolumn 5']
+    assert result.iloc[0].tolist() == ['001', 1, '4000', 'keep', 'also keep']
