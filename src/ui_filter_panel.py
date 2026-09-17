@@ -37,7 +37,7 @@ def filter_panel(data, *, view, selection_key=None):
             values = {}
             with st.container(border=True):
                 st.write(label)
-                # Public persistence keeps a KPI view's filters when another card is opened.
+                # Keep view state across reruns; a card click resets its own view.
                 common = dict(persist_state='session')
                 if definition.kind == 'category':
                     values['categories'] = tuple(st.multiselect(
@@ -81,6 +81,9 @@ def filter_panel(data, *, view, selection_key=None):
     filtered = apply_filters(data, rules)
     st.caption(f'Visar {len(filtered.data)} av {len(data)} rader')
     st.caption('Aktiva vyfilter: ' + (' · '.join(filtered.active) if filtered.active else 'Inga'))
+    if filtered.active:
+        st.button('Rensa vyfilter', key=prefix + 'clear_visible',
+                  on_click=clear_ui_filters, args=(view, selection_key))
     for notice in filtered.notices:
         st.caption(notice)
     if selection_key is not None:

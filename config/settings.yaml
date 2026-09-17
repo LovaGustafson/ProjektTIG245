@@ -81,7 +81,7 @@ supplier_matching:
   registry_columns:
     supplier_name: ["Leverantör", "leverantör", "supplier_name"]
     organization_number: ["Organisationsnummer", "organisationsnummer", "Org.nr", "organization_number"]
-    contract_name: ["Avtalsnamn", "avtalsnamn", "contract_name"]
+    contract_name: ["Namn", "Avtalsnamn", "avtalsnamn", "contract_name"]
     reference_number: ["Referensnummer", "referensnummer", "reference_number"]
     start_date: ["Startdatum", "startdatum", "start_date"]
     end_date: ["Slutdatum", "slutdatum", "end_date"]

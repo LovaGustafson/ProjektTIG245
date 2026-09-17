@@ -117,6 +117,24 @@ transaktionsrad. Markera en rad för normalisering, metod, score, motivering,
 organisationsnummer, kandidater och möjliga avtal. Filterändringar behåller
 det uppladdade registret. Byte av fil eller registerdatum rensar föregående resultat.
 
+Alla sammanfattningskort är klickbara. Ett kortklick visar exakt kortets underlag
+och rensar den tabellens tillfälliga filter. Aktiva vyfilter visas ovanför tabellen
+med **Rensa vyfilter**. **Till översikt** i sidofältet rensar navigering och
+tillfälliga vyfilter; grundexkluderingar, analys och exporter behålls.
+Kontrollkorten räknar verifikationer, valideringsfel respektive kontroller enligt
+kortets förklaring. Leverantörskorten räknar kvarvarande transaktionsrader.
+Datumvarningen visas separat och ersätter aldrig leverantörsstatusen.
+Osäkra träffar visar kandidater och motivering till manuell granskning.
+
+Verifiering med de lokala originalfilerna 2026-09-17: den extra raden på
+källposition 4764 är en rapportfot med rapporttitel, sidnumrering och utskriftstid.
+Alla tre signaler och avsaknad av transaktionsidentitet krävs för denna
+igenkänning. Raden bevaras i Bortfiltrerade och valideras som `NOT_APPLICABLE`.
+Resultatet är 836 kvarvarande transaktioner, 836 leverantörsanalyser och 139
+datumvarningar. Totalt inlästa rader inkluderar rapportfoten; det måttet är inte
+ett transaktionsantal. Källfilerna kontrollerades med SHA-256 och ändringstid
+före/efter körningen och var oförändrade. Inga verkliga rader används som testdata.
+
 CLI stöder också `.csv` för registret:
 
 ```bash
@@ -129,7 +147,9 @@ registerbladet väljs genom konfiguration. CSV använder initialt semikolon och
 UTF-8 med eventuell BOM. Excel-läsaren kan hitta registerrubriken inom de första
 50 raderna via minst två olika konfigurerade fält. Inga kolumnpositioner gissas.
 Leverantörsnamn och organisationsnummer behöver entydiga kolumner; saknade
-avtalsdetaljer ger varning. TODO: verifiera exakta rubriker mot den riktiga filen.
+avtalsdetaljer ger varning. Rubriken `Namn` i det granskade Koncerninköpsregistret
+mappar till `contract_name`, vilket tar bort den tidigare varningen om saknat
+avtalsnamn. TODO / AK: bekräfta andra registervarianter och kvarvarande fältbetydelser.
 
 Matchningsregler:
 
