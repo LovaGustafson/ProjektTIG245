@@ -60,6 +60,33 @@ manual_sample_interval: 20
 
 # TODO / awaiting business confirmation:
 # - Meanings of Mm, Pg, Sign, Att, Ksansv and Bild.
-# - Supplier identifier; do not assume counterparty identifies the supplier.
-# - Supplier/procurement and attestation register structures.
+# - Internal supplier ID -> organization number; counterparty is metadata only.
+# - Attestation register structure.
 # - Correct attestation flow and authorization rules.
+
+# Name matching is a prototype identity suggestion, never contract compliance.
+supplier_matching:
+  registry_snapshot_date: "2026-08-31"
+  # Technical safeguards, pending evaluation against the actual register.
+  fuzzy_strong_threshold: 0.94
+  fuzzy_candidate_threshold: 0.82
+  prefix_min_characters: 8
+  prefix_min_tokens: 2
+  prefix_min_coverage: 0.60
+  related_first_token_min_characters: 6
+  registry_sheet: 0
+  csv_delimiter: ";"
+  csv_encoding: "utf-8-sig"
+  # Explicit aliases only. TODO: verify exact headings against supplied file.
+  registry_columns:
+    supplier_name: ["Leverantör", "leverantör", "supplier_name"]
+    organization_number: ["Organisationsnummer", "organisationsnummer", "Org.nr", "organization_number"]
+    contract_name: ["Avtalsnamn", "avtalsnamn", "contract_name"]
+    reference_number: ["Referensnummer", "referensnummer", "reference_number"]
+    start_date: ["Startdatum", "startdatum", "start_date"]
+    end_date: ["Slutdatum", "slutdatum", "end_date"]
+    contract_id: ["Avtals-ID", "AvtalsID", "avtals-ID", "contract_id"]
+    contract_category: ["Avtalskategori", "avtalskategori", "contract_category"]
+    level_1: ["Nivå1", "Nivå 1", "level_1"]
+    level_2: ["Nivå2", "Nivå 2", "level_2"]
+    level_3: ["Nivå3", "Nivå 3", "level_3"]

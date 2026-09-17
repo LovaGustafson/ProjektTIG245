@@ -2,6 +2,35 @@ import pandas as pd
 from src.filtering.filter_engine import filter_rows
 
 
+def test_fbfm_is_excluded_but_typo_fbrm_is_not_a_configured_exclusion():
+    source = pd.DataFrame({'account': ['4000'] * 2 + [7698, '7699.0'],
+                           'verification_type': ['FBFM', 'FBRM', 'X', 'X']})
+    assert filter_rows(source).cleaned_data.index.tolist() == [1]
+
+
+def test_report_rows_are_retained_as_excluded_and_incomplete_transactions_survive():
+    source = pd.DataFrame([
+        ['001', 1, '4000', 'X', 'Summa AB Slutk 1'],
+        [None, 1, '4000', 'X', 'Felaktig faktura'],
+        ['Summa', None, None, None, None],
+        [None, None, None, None, None],
+        ['Vernr', 'Vrad', 'Konto', 'Vertyp', 'Huvudtext'],
+        [None, None, None, None, 'Rapport: september'],
+    ], columns=['verification_id', 'verification_line_id', 'account',
+                'verification_type', 'header_text'])
+    before = source.copy(deep=True)
+    result = filter_rows(source)
+    assert result.cleaned_data.index.tolist() == [0, 1]
+    assert len(result.excluded_data) == 4
+    assert all(result.reasons[2:])
+    pd.testing.assert_frame_equal(source, before)
+
+
+def test_supplier_name_starting_with_summa_does_not_remove_an_incomplete_invoice():
+    data = pd.DataFrame({'verification_id': ['001'], 'header_text': ['Summa AB Slutk 1']})
+    assert len(filter_rows(data).cleaned_data) == 1
+
+
 def test_confirmed_exclusions_and_unresolved_types_preserve_input():
     source = pd.DataFrame({'account': ['7698', '7699', '4000', None, 7698],
                            'verification_type': ['X'] * 5})

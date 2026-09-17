@@ -108,15 +108,119 @@ python -m pytest -q
 Beroenden finns i `requirements.txt`. Minimikrav anges där API-användningen
 kräver det; miljön är inte fullständigt versionslåst.
 
+## Leverantörsmatchning mot Koncerninköp
+
+Ladda upp både fakturafilen och Koncerninköpsregistret i Streamlits sidofält.
+Ange registerutdragets datum (förvalt **2026-08-31**) och starta analysen.
+Granskning visar fyra statusar med färgikoner och en sammanfattning per
+transaktionsrad. Markera en rad för normalisering, metod, score, motivering,
+organisationsnummer, kandidater och möjliga avtal. Filterändringar behåller
+det uppladdade registret. Byte av fil eller registerdatum rensar föregående resultat.
+
+CLI stöder också `.csv` för registret:
+
+```bash
+python -m src.main data/input/fakturor.xlsx --supplier-register data/reference/koncerninkop.xlsx --registry-snapshot-date 2026-08-31 --output-dir data/output/korning-002
+```
+
+Registrets blad, CSV-avgränsare/encoding, rubrikalias och matchningströsklar
+ligger i `supplier_matching` i `config/settings.yaml`. UI laddar `.xlsx`;
+registerbladet väljs genom konfiguration. CSV använder initialt semikolon och
+UTF-8 med eventuell BOM. Excel-läsaren kan hitta registerrubriken inom de första
+50 raderna via minst två olika konfigurerade fält. Inga kolumnpositioner gissas.
+Leverantörsnamn och organisationsnummer behöver entydiga kolumner; saknade
+avtalsdetaljer ger varning. TODO: verifiera exakta rubriker mot den riktiga filen.
+
+Matchningsregler:
+
+- Extrahera endast text före första fristående `Prelb`/`Slutk` (okänsligt för
+  stora/små bokstäver). Originalets Huvudtext behålls.
+- Normalisera Unicode (NFKC), case, whitespace och skiljetecken. Explicita
+  motsvarigheter som Aktiebolag/AB normaliseras, men bolagsformer tas inte bort.
+  Svenska diakritiska tecken behålls.
+- Prioritera exakt normaliserad träff, därefter prefix, därefter fuzzy.
+  Prefix kräver minst **8 tecken**, **2 ord**, **60 % täckning** av det
+  normaliserade registernamnet, samma kompletta första namnord och ingen
+  redan fullständig bolagsform i kandidattexten före ytterligare namntext.
+- Fuzzy använder standardbibliotekets deterministiska `SequenceMatcher`
+  (`autojunk=False`). Stark kandidat kräver score **≥ 0,94**, minst två namnord,
+  samma antal namnord utan bolagsform och förenlig bolagsform. Score **≥ 0,82**
+  ger en kandidat för manuell kontroll. Samma första namnord med minst sex
+  tecken eller samma namn utan bolagsform kan också ge en osäker kandidat;
+  exempelvis Swedbank Pay/Swedbank och AJ Medical HB/KB.
+- En stark träff kräver **en enda rimlig leverantörsidentitet** och ett
+  organisationsnummer. Även exakta träffar blir osäkra om en annan rimlig
+  juridisk person finns. Saknade organisationsnummer slås aldrig ihop.
+  Dessa försiktiga gränser är tekniska prototypval som behöver utvärderas.
+- Score är namnlikhet/prefixtäckning, **inte en sannolikhet**. Matchningen
+  gör inga besked om upphandling eller avtalstrohet och väljer aldrig ett avtal.
+  Organisationsnummer jämförs utan blanksteg/bindestreck; originalvärdet finns
+  kvar i avtalsdetaljerna. Ingen kontrollsiffra eller koncernkoppling härleds.
+- Alla avtalsrader för varje kandidat visas, även när datum eller kategori
+  saknas. `contract_count` räknar registerposter för den starkt matchade
+  leverantören; dubbletter av avtalsrader dedupliceras inte utan bekräftade regler.
+  Vid osäker match är valt namn/organisationsnummer tomt och avtalsantalet per
+  kandidat finns i detaljbladet. Avtalsdatum används inte för att välja avtal.
+- Transaktion efter registerdatum får en separat varning. Saknat/ogiltigt
+  datum får status UNKNOWN för datumkontrollen; leverantörsstatus påverkas inte.
+
+`src/supplier_matching/` håller extraktion, normalisering, matchning,
+datumkontroll och radanalys separerade. `src/ingestion/contract_reader.py`
+läser registret, och `src/models/supplier.py` beskriver leverantörsidentiteter
+och resultat. `Motp` används aldrig som leverantörsnyckel. En framtida
+ID-resolver kan ge samma resultatmodell. Köp–avtalskategori implementeras inte.
+
+Excel-exporterna för granskning, rensat underlag, stickprov och avvikelser
+får matchningsfält samt separata blad för **Registerinformation**,
+**Leverantörsmatchning**, **Leverantörskandidater** och **Möjliga avtal**.
+`source_row_position` kopplar detaljer till den inlästa tabellens radposition
+(från 0, inte Excel-radnummer). Originalkolumner skrivs aldrig över; eventuella
+namnkrockar ger ett `_`-prefix på det tillagda fältet. Saknat eller oläsbart
+register redovisas som otillgänglig matchning, aldrig som NO_MATCH. Loggning
+innehåller sammanfattade antal; beslutens fulla förklaringar sparas i resultatet.
+
+Grundfiltret behåller de 42 befintliga Vertyp-koderna, inklusive **FBFM**;
+**FBRM** läggs inte till. Konto 7698/7699 fungerar med tal och text.
+Tomma rapportrader, upprepade rubriker och tydligt märkta summa-/rapportrader
+utan transaktionsuppgifter bevaras i Bortfiltrerade med orsak. Andra ofullständiga
+rader behålls för validering. TODO: kontrollera detta mot det verkliga rapportformatet.
+
+De verkliga faktura-/registerfilerna finns inte i projektets datamappar.
+Referensvärdena **836 / 825 / 11**, **508 / 4 / 313 / 11** och **139 datumvarningar**
+har därför inte verifierats. Testerna använder syntetiska data och omfattar även
+trunkeringsexemplen, bolagsformskonflikter, flera juridiska personer, flera avtal,
+filernas oförändrade bytes/mtime, Streamlit-raddetaljer och Excel-export.
+
+## Numeriska Excel-identifierare
+
+Validering och verifikationsgruppering använder gemensamma jämförelsenycklar i
+`src/mapping/identifiers.py`. `Vernr` och `Konto` accepterar Python-/NumPy-heltal
+och ändliga flyttal med exakt heltalsvärde. Exempel: `3934106.0` får intern
+nyckel `"3934106"`; `3934106.5`, booleska värden och oändlighet avvisas utan
+avrundning. `Vrad` accepterade redan heltaliga tal och har kompletterande
+NumPy-regressionstester. Andra fält får inga nya valideringsregler.
+
+Text-ID bevaras exakt. `"00123"` är därför en annan identitet än talet `123`,
+medan `3934106`, `3934106.0` och texten `"3934106"` delar intern identitet.
+Decimal-/exponentliknande text konverteras inte till tal utan säker uppgift
+om ursprunget. Endast jämförelsenyckeln normaliseras; källfiler, DataFrame-värden,
+radtyper och exporterade källceller bevaras.
+
+Valideringen återanvänder grundfiltrets identifiering av tomma rapportrader,
+summa-/rapportrader och upprepade rubriker. Dessa får `NOT_APPLICABLE` med
+förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
+är fortsatt ett fel. Testerna omfattar en syntetisk float64-tabell med
+4 763 identifierare och två rapportrader samt Excel → UI → export.
+
 ## Begränsningar i v0.1
 
-- Leverantörs- och attestregler samt obligatoriska verksamhetsfält inväntar AK.
+- Avtalstrohet, attestregler och obligatoriska verksamhetsfält inväntar AK.
 - Bildläsaren utför inte OCR. Bildkoppling och referensregister konfigureras
-  inte via UI:t; laddade register innebär inte att verksamhetsregler bekräftats.
+  inte via UI:t. Koncerninköp kan laddas upp för namnmatchning enligt ovan.
 - Rader utan användbart verifikationsnummer behålls i underlaget men grupperas
   inte som verifikationer. Slutlig hantering kräver verksamhetsbeslut.
-- Konton normaliseras endast vid filterjämförelsen (tal, text och omgivande
-  blanksteg). Originalvärden behålls; datamodellens validering är oförändrad.
+- Konton normaliseras vid filterjämförelsen (tal, text och omgivande blanksteg).
+  Valideringen accepterar även heltaliga Excel-tal enligt ovan. Originalvärden behålls.
 - Valideringsdetaljer och samtliga kontrollresultat finns i UI/minnesresultatet;
   Excel innehåller underlag, flaggningar, stickprov och sammanfattning.
 - `code` i flaggrapporten är tomt: `check_type` identifierar kontrollen men är
@@ -137,9 +241,10 @@ The business `required_fields` setting is separate from the five mandatory
 row-validation fields already defined in the specification: `verification_id`,
 `verification_line_id`, `verification_date`, `amount`, and `account`.
 
-AK must also confirm field meanings, the supplier identifier, reference-register
-structures, and attestation rules. Do not infer that `counterparty` identifies
-the supplier. The final sampling method remains open to confirmation.
+AK must also confirm field meanings, the internal supplier ID mapping and
+attestation rules. The new name-based prototype uses Huvudtext, never
+`counterparty`, for supplier candidates. The final sampling method remains
+open to confirmation.
 
 ## Data handling
 
@@ -173,9 +278,9 @@ skapas i minnet; ingen källsökväg används som exportmål. Originalets filbyt
 en separat original-DataFrame behålls i sessionen. Filterändringar analyserar
 om arbetskopian och uppdaterar också exporterna.
 
-Upphandlingskontroll, attestkontroll och rätt attestant visas som ej tillgängliga.
-Inga register eller bedömningar simuleras. TODO: register, leverantörsidentifiering
-och attestregler behöver fastställas med AK. Ingen OCR eller systemintegration
+Kontroll av avtalstrohet, attestkontroll och rätt attestant är fortsatt ej tillgängliga.
+Koncerninköp kan användas för den separata leverantörsmatchningen ovan.
+TODO: internt leverantörs-ID och attestregler behöver fastställas med AK. Ingen OCR eller systemintegration
 ingår. Första kalkylbladet används fortfarande; Excel-format/styling bevaras inte
 i exporter. Automatiserad analys omfattar alla kvarvarande verifikationer;
 stickprovet görs separat efteråt.

@@ -13,15 +13,34 @@ import pandas as pd
 from src.presentation import context_fields, check_message
 from src.models.result import CheckResult
 from src.models.verification import Verification
+from src.supplier_matching.analysis import enrich_rows
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
 CHECK_COLUMNS = [field.name for field in fields(CheckResult)] + ["verification_date", "header_text", "code", "message"]
 
 
-def _verification_rows(verifications: Iterable[Verification]) -> pd.DataFrame:
+def _verification_rows(verifications: Iterable[Verification], supplier_analysis=None) -> pd.DataFrame:
     frames = [verification.rows for verification in verifications]
-    return pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame(columns=ROW_COLUMNS)
+    rows = pd.concat(frames, sort=False) if frames else pd.DataFrame(columns=ROW_COLUMNS)
+    return enrich_rows(rows, supplier_analysis)
+
+
+def supplier_sheets(analysis, positions=None):
+    if analysis is None:
+        return {}
+    metadata = {'Registerinformation': pd.DataFrame({
+        'registry_snapshot_date': analysis.registry.snapshot_date,
+        'matching_available': analysis.registry.available,
+        'issues': list(analysis.registry.issues) or [''],
+    })}
+    if not analysis.registry.available:
+        return metadata
+    def subset(data):
+        return data if positions is None else data[data['source_row_position'].isin(positions)]
+    return {**metadata, 'Leverantörsmatchning': subset(analysis.rows),
+            'Leverantörskandidater': subset(analysis.candidates),
+            'Möjliga avtal': subset(analysis.contracts)}
 
 
 def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
@@ -53,6 +72,7 @@ def generate_reports(
     manual_sample: Iterable[Verification],
     output_dir: str | Path,
     summary: Mapping[str, int] | None = None,
+    supplier_analysis=None,
 ) -> dict[str, Path]:
     """Export three new workbooks and return their paths keyed by report name.
 
@@ -80,6 +100,9 @@ def generate_reports(
     this call are removed. Filesystem and serialization errors propagate.
     """
     flagged_verifications = list(flagged_verifications)
+    manual_sample = list(manual_sample)
+    flagged_rows = _verification_rows(flagged_verifications, supplier_analysis)
+    sample_rows = _verification_rows(manual_sample, supplier_analysis)
     checks = []
     for check in flagged_checks:
         record = asdict(check)
@@ -94,13 +117,16 @@ def generate_reports(
                       message=check_message(check))
         checks.append(record)
     workbooks = {
-        "cleaned_data": _workbook({"rows": cleaned_data}),
+        "cleaned_data": _workbook({"rows": enrich_rows(cleaned_data, supplier_analysis),
+                                    **supplier_sheets(supplier_analysis)}),
         "flagged_invoices": _workbook({
             "checks": pd.DataFrame(checks, columns=CHECK_COLUMNS),
-            "rows": _verification_rows(flagged_verifications),
+            "rows": flagged_rows,
+            **supplier_sheets(supplier_analysis, flagged_rows.index),
             **({"Summary": pd.DataFrame([summary])} if summary is not None else {}),
         }),
-        "manual_sample": _workbook({"rows": _verification_rows(manual_sample)}),
+        "manual_sample": _workbook({"rows": sample_rows,
+                                    **supplier_sheets(supplier_analysis, sample_rows.index)}),
     }
     directory = Path(output_dir)
     paths = {name: directory / f"{name}.xlsx" for name in workbooks}
@@ -144,14 +170,19 @@ def review_summary(original_data, filtering):
     }
 
 
-def review_workbooks(original_data, filtering):
+def review_workbooks(original_data, filtering, supplier_analysis=None):
     review, excluded = review_tables(original_data, filtering)
-    summary = pd.DataFrame(list(review_summary(original_data, filtering).items()),
+    review = enrich_rows(review, supplier_analysis)
+    counts = review_summary(original_data, filtering)
+    if supplier_analysis is not None and supplier_analysis.registry.available:
+        counts.update(supplier_analysis.summary())
+    summary = pd.DataFrame(list(counts.items()),
                            columns=['Mått', 'Antal'])
     return {
-        'granskning.xlsx': _workbook({'Granskning': review}),
+        'granskning.xlsx': _workbook({'Granskning': review, **supplier_sheets(supplier_analysis)}),
         'bortfiltrerade.xlsx': _workbook({'Bortfiltrerade': excluded}),
         'samlad_kontrollfil.xlsx': _workbook({
             'Granskning': review, 'Bortfiltrerade': excluded, 'Sammanfattning': summary,
+            **supplier_sheets(supplier_analysis),
         }),
     }

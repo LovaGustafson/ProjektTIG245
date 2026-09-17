@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pandas as pd
+import numpy as np
 import pytest
 
 from src.validation.validator import REQUIRED_FIELDS, validate
@@ -97,9 +98,73 @@ def test_integer_line_id_without_unconfirmed_range_rule(value):
 
 
 @pytest.mark.parametrize("field", ["verification_id", "account"])
-@pytest.mark.parametrize("value", [123, True, [], {}])
-def test_internal_string_fields_reject_other_types(field, value):
+@pytest.mark.parametrize("value", [3934106.5, np.float64(86.5), True, np.bool_(True),
+                                   float('inf'), float('-inf'), [], {}])
+def test_identifier_fields_reject_non_integral_and_unsupported_values(field, value):
     assert (field, "invalid_value") in codes(validate(frame(row(**{field: value}))))
+
+
+@pytest.mark.parametrize('field', ['verification_id', 'account'])
+@pytest.mark.parametrize('value', [3934106.0, 10001511.0, 86.0, 3934106, '3934106',
+                                  np.int64(3934106), np.uint64(3934106),
+                                  np.float64(10001511), np.float32(86), np.longdouble(86)])
+def test_integral_excel_identifier_values_are_valid_without_changing_source(field, value):
+    data = frame(row(**{field: value}))
+    before = data.copy(deep=True)
+    assert validate(data).rows[0].validation_status == 'VALID'
+    pd.testing.assert_frame_equal(data, before)
+    assert type(data[field].iloc[0]) is type(value)
+
+
+@pytest.mark.parametrize('value', [np.int64(1), np.uint64(1), np.float64(1),
+                                  np.float32(1), np.longdouble(1)])
+def test_numpy_integral_line_ids_remain_valid(value):
+    assert validate(frame(row(verification_line_id=value))).rows[0].validation_status == 'VALID'
+
+
+@pytest.mark.parametrize('value', [np.float32(1.5), np.float64(1.5), np.bool_(True)])
+def test_numpy_fractional_or_boolean_line_ids_remain_invalid(value):
+    assert ('verification_line_id', 'invalid_value') in codes(validate(frame(row(verification_line_id=value))))
+
+
+def test_numeric_and_text_verification_keys_share_duplicate_detection_without_merging_leading_zeros():
+    data = frame(*(row(verification_id=value) for value in
+                   [3934106.0, np.int64(3934106), '3934106', '03934106', '3934106.0']))
+    result = validate(data)
+    assert [r.validation_status for r in result.rows] == ['INVALID'] * 3 + ['VALID'] * 2
+    assert all(('verification_id+verification_line_id', 'duplicate_identity') in codes(result, i)
+               for i in range(3))
+
+
+def test_footer_and_blank_rows_are_not_invoices_but_missing_transaction_ids_are_errors():
+    data = frame(row(), {field: float('nan') for field in REQUIRED_FIELDS},
+                 {'header_text': 'Summa', 'amount': 100},
+                 {'verification_id': 'Totalt', 'amount': 100},
+                 row(verification_id=None))
+    result = validate(data)
+    assert [r.validation_status for r in result.rows] == [
+        'VALID', 'NOT_APPLICABLE', 'NOT_APPLICABLE', 'NOT_APPLICABLE', 'INVALID']
+    assert all(not r.validation_errors and r.skipped_reason for r in result.rows[1:4])
+    assert ('verification_id', 'missing_value') in codes(result, 4)
+
+
+def test_float64_regression_with_4763_numeric_ids_and_two_report_rows():
+    count = 4763
+    data = pd.DataFrame({
+        'verification_id': [float(3934106 + i) for i in range(count)] + [np.nan, np.nan],
+        'verification_line_id': [1.0] * count + [np.nan, np.nan],
+        'verification_date': ['2026-09-03'] * count + [None, None],
+        'amount': [10.0] * count + [np.nan, 10.0 * count],
+        'account': [4000.0] * count + [np.nan, np.nan],
+        'header_text': [None] * (count + 1) + ['Summa'],
+    })
+    before = data.copy(deep=True)
+    assert data.verification_id.dtype == np.dtype('float64')
+    result = validate(data)
+    assert sum(r.validation_status == 'VALID' for r in result.rows) == count
+    assert sum(r.validation_status == 'NOT_APPLICABLE' for r in result.rows) == 2
+    assert not any(r.validation_errors for r in result.rows)
+    pd.testing.assert_frame_equal(data, before)
 
 
 def test_all_duplicate_identities_marked_even_with_other_errors():

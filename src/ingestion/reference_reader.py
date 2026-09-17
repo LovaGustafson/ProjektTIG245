@@ -49,6 +49,7 @@ def _read_csv(path: Path, delimiter: str, encoding: str) -> pd.DataFrame:
 def read_reference(
     reference: object, *, register_type: RegisterType,
     sheet_name: str | int = 0, delimiter: str = ",", encoding: str = "utf-8-sig",
+    header_aliases=None, header_minimum_fields=3,
 ) -> ReferenceReadResult:
     """Load an .xlsx worksheet or CSV as an independent, uninterpreted table.
 
@@ -87,7 +88,8 @@ def read_reference(
         return result(path, ReadStatus.UNSUPPORTED, "Only .xlsx and .csv reference files are supported")
     try:
         if path.suffix.lower() == ".xlsx":
-            data = read_excel(path, sheet_name=sheet_name)
+            data = read_excel(path, sheet_name=sheet_name, header_aliases=header_aliases,
+                              header_minimum_fields=header_minimum_fields)
         else:
             data = _read_csv(path, delimiter, encoding)
     except FileNotFoundError:

@@ -1,5 +1,5 @@
 """Orchestrate existing modules; retain intermediate data and all check results."""
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import pandas as pd
@@ -17,6 +17,9 @@ from src.models.verification import Verification
 from src.sampling.manual_sample import create_manual_sample
 from src.output.report_generator import generate_reports
 from src.presentation import summary_counts
+from src.ingestion.contract_reader import read_contract_registry
+from src.supplier_matching.analysis import SupplierAnalysis, analyze_suppliers
+from src.supplier_matching.settings import load_matching_settings, MatchSettings, snapshot_date
 
 
 @dataclass
@@ -31,12 +34,14 @@ class PipelineResult:
     manual_sample: list[Verification]
     report_paths: dict[str, Path]
     todos: tuple[str, ...]
+    supplier_analysis: SupplierAnalysis | None = None
 
 
 def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                  sheet_name=0, date_format=None, image_references=None,
                  supplier_register=None, attestation_register=None,
-                 rule_options=None, rules=None, excluded_verification_types=None) -> PipelineResult:
+                 rule_options=None, rules=None, excluded_verification_types=None,
+                 registry_snapshot_date=None) -> PipelineResult:
     """Run analysis of every grouped verification before selecting the sample.
 
     Validation metadata refers to standardized_data positions before filtering.
@@ -50,8 +55,10 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     register format conventions. Unconfirmed rules retain engine defaults;
     required_fields in YAML does not imply confirmation of business scope.
     All detection results and validation errors are retained in PipelineResult;
-    the existing report generator exports only its three supported reports.
-    TODO: a persistent report format for all validation/nonflagged results.
+    the report generator exports its three workbooks, with supplier identity
+    evidence on separate sheets when a register is supplied. Name matching is
+    row-level and runs on cleaned rows even if they cannot form a verification.
+    TODO: a persistent report format for all validation/nonflagged checks.
     """
     original = read_excel(input_path, sheet_name=sheet_name)
     standardized = map_columns(original)
@@ -62,6 +69,15 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     unusable = {row.row_position for row in validation.rows
                 if any(error.field == 'verification_id' for error in row.validation_errors)}
     cleaned = filtering.cleaned_data
+    supplier_analysis = None
+    if supplier_register is not None:
+        config = load_matching_settings(settings_path)
+        configured_date = registry_snapshot_date or config.get('registry_snapshot_date')
+        snapshot = snapshot_date(configured_date) if configured_date is not None else None
+        registry = read_contract_registry(supplier_register, config=config, snapshot=snapshot)
+        matching = MatchSettings(**{f.name: config[f.name] for f in fields(MatchSettings)
+                                   if f.name in config})
+        supplier_analysis = analyze_suppliers(cleaned, registry, settings=matching, date_format=date_format)
     eligible = cleaned.loc[~cleaned.index.isin(unusable)]
     ungrouped = cleaned.loc[cleaned.index.isin(unusable)].copy(deep=True)
     if list(eligible.columns).count('verification_id') == 1:
@@ -73,6 +89,10 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     attestation = read_attestation_register(attestation_register)
     images = [tuple(read_image(path) for path in (image_references or {}).get(v.verification_id, ()))
               for v in verifications]
+    if rules is None and supplier_analysis is not None and supplier_analysis.registry.available:
+        rule_options = {**(rule_options or {})}
+        rule_options['supplier_check'] = {**rule_options.get('supplier_check', {}),
+                                          'identity_matching_available': True}
     results = [run_detection(v, image_results=evidence, supplier_reference=supplier,
                              attestation_reference=attestation,
                              rule_options=rule_options, rules=rules)
@@ -83,10 +103,13 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
               if check.status == CheckStatus.FLAGGED]
     paths = generate_reports(cleaned, flagged_verifications=flagged,
                              flagged_checks=checks, manual_sample=sample, output_dir=output_dir,
-                             summary=summary_counts(standardized, validation, results))
+                             summary=summary_counts(standardized, validation, results),
+                             supplier_analysis=supplier_analysis)
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',
     )
+    if supplier_analysis is not None:
+        todos += supplier_analysis.registry.issues
     return PipelineResult(original, standardized, validation, filtering, ungrouped,
-                          verifications, results, sample, paths, todos)
+                          verifications, results, sample, paths, todos, supplier_analysis)

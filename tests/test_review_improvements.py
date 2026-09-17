@@ -153,7 +153,7 @@ def test_date_alias_participates_in_header_detection(tmp_path, date_header):
 
 def test_detail_invalid_identity_missing_values_and_no_mutation():
     book = load_workbook(BytesIO(source()))
-    book.active['A4'] = 123
+    book.active['A4'] = 123.5
     book.active['F4'] = None
     buffer = BytesIO()
     book.save(buffer)
@@ -162,7 +162,7 @@ def test_detail_invalid_identity_missing_values_and_no_mutation():
     original = review.result.original_data.copy(deep=True)
     downloads = dict(review.downloads)
     fields, warnings = review_row_detail(review.result, 0)
-    assert fields.set_index('Fält').loc['Vernr', 'Källvärde'] == 123
+    assert fields.set_index('Fält').loc['Vernr', 'Källvärde'] == 123.5
     assert any('Vernr' in w and 'format' in w for w in warnings)
     assert any('Utfall' in w and 'saknas' in w for w in warnings)
     pd.testing.assert_frame_equal(review.result.original_data, original)

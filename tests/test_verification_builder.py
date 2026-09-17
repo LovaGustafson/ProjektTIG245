@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 import pandas as pd
+import numpy as np
 
 from src.models.verification import Verification
 from src.verification.verification_builder import build_verifications
@@ -94,6 +95,27 @@ def test_ids_are_not_normalized():
     ids = ["00100", "100", "A", "a", "A "]
     data = pd.DataFrame([invoice_row(value) for value in ids])
     assert [v.verification_id for v in build_verifications(data)] == ids
+
+
+def test_integral_numeric_and_text_ids_group_together_with_original_cells_unchanged():
+    ids = [3934106.0, '86', np.int64(3934106), '3934106', np.float64(86),
+           '03934106', '3934106.0']
+    data = pd.DataFrame([invoice_row(value, i + 1) for i, value in enumerate(ids)], dtype=object)
+    data.index = ['same'] * len(data)
+    before = data.copy(deep=True)
+    groups = build_verifications(data)
+    assert [v.verification_id for v in groups] == ['3934106', '86', '03934106', '3934106.0']
+    for group, positions in zip(groups, [[0, 2, 3], [1, 4], [5], [6]]):
+        pd.testing.assert_frame_equal(group.rows, before.iloc[positions])
+    pd.testing.assert_frame_equal(data, before)
+
+
+def test_float64_source_column_remains_float64_inside_groups():
+    data = pd.DataFrame([invoice_row(3934106.0, 1), invoice_row(3934106.0, 2), invoice_row(86.0)])
+    groups = build_verifications(data)
+    assert [v.verification_id for v in groups] == ['3934106', '86']
+    pd.testing.assert_frame_equal(groups[0].rows, data.iloc[:2])
+    assert groups[0].rows.verification_id.dtype == np.dtype('float64')
 
 
 def test_empty_dataframe_returns_no_verifications():
