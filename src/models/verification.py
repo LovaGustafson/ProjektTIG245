@@ -9,8 +9,9 @@ import pandas as pd
 class Verification:
     """One grouping key and its complete, independently editable row data.
 
-    Standardized verification IDs are strings. The builder retains the input
-    key as supplied, including nulls, because validation is a separate step.
+    Valid verification keys are strings; integral Excel numbers normalize only
+    for this key. Text keys retain their spelling. Invalid/null grouping keys
+    remain the caller's responsibility because validation is a separate step.
     rows retains all input columns, dtypes, index labels and row order.
     """
 

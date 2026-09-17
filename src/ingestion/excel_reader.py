@@ -24,14 +24,15 @@ HEADER_ALIASES.update({name: field for name, field in COLUMN_ALIASES.items()
                        if field == 'verification_date'})
 
 
-def _header_position(preview):
+def _header_position(preview, aliases=None, minimum_fields=3):
+    aliases = HEADER_ALIASES if aliases is None else aliases
     # Count distinct fields, not repeated labels or substrings in metadata text.
-    scores = [len({HEADER_ALIASES[value.strip()] for value in row
-                   if isinstance(value, str) and value.strip() in HEADER_ALIASES})
+    scores = [len({aliases[value.strip()] for value in row
+                   if isinstance(value, str) and value.strip() in aliases})
               for row in preview]
     best = max(scores, default=0)
     # Keep first-row reading for generic reports and small/incomplete schemas.
-    return scores.index(best) if best >= 3 else 0
+    return scores.index(best) if best >= minimum_fields else 0
 
 
 def _prepare_columns(data):
@@ -56,7 +57,8 @@ def _prepare_columns(data):
 
 
 def read_excel(
-    path: str | PathLike[str], *, sheet_name: str | int = 0
+    path: str | PathLike[str], *, sheet_name: str | int = 0,
+    header_aliases=None, header_minimum_fields=3,
 ) -> pd.DataFrame:
     """Read every row and column of one .xlsx worksheet without writing to disk.
 
@@ -66,6 +68,9 @@ def read_excel(
     the header. Source and standardized field names are accepted, with outer
     whitespace ignored. If none qualifies, retain first-row reading for generic
     reports and incomplete schemas. Sheets are never combined.
+
+    Reference readers may explicitly supply header_aliases and a minimum
+    number of distinct fields; invoice header detection is unchanged by default.
 
     Metadata above the header is skipped. Unnamed empty columns are removed;
     unnamed populated columns receive unique names. Named duplicate headers
@@ -106,7 +111,7 @@ def read_excel(
             preview = list(islice(rows, HEADER_SCAN_ROWS))
             if not preview:
                 return pd.DataFrame(dtype=object)
-            header_position = _header_position(preview)
+            header_position = _header_position(preview, header_aliases, header_minimum_fields)
             headers = preview[header_position]
             data = pd.DataFrame(
                 chain(preview[header_position + 1:], rows),

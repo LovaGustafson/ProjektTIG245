@@ -5,14 +5,17 @@ from copy import deepcopy
 import pandas as pd
 
 from src.models.verification import Verification
+from src.mapping.identifiers import normalize_identifier
 
 
 def build_verifications(data: pd.DataFrame) -> list[Verification]:
     """Return verifications in first-appearance order, retaining every input row.
 
     Expects a DataFrame with one verification_id column containing standardized,
-    groupable IDs. Mapping and validation belong to upstream components.
-    IDs are not trimmed, converted or normalized. Rows within each verification
+    groupable IDs. Validation belongs to upstream components. Finite integral
+    numeric IDs use the same text comparison key as validation; text IDs retain
+    their exact spelling. The original ID cells and dtypes remain in rows.
+    Rows within each verification
     remain in input order; line IDs are neither sorted nor deduplicated.
 
     Every group contains an independent DataFrame, including copies of mutable
@@ -25,7 +28,11 @@ def build_verifications(data: pd.DataFrame) -> list[Verification]:
     after validation; a null-key group must not imply one real verification.
     """
     verifications = []
-    for _, group in data.groupby("verification_id", sort=False, dropna=False, observed=True):
+    def grouping_key(value):
+        normalized = normalize_identifier(value)
+        return normalized if normalized is not None else value
+    keys = data['verification_id'].map(grouping_key)
+    for _, group in data.groupby(keys, sort=False, dropna=False, observed=True):
         rows = group.copy(deep=True)
         # pandas deep copies its arrays, but not objects held inside those arrays.
         for column_position, dtype in enumerate(rows.dtypes):
@@ -35,7 +42,7 @@ def build_verifications(data: pd.DataFrame) -> list[Verification]:
                         rows.iat[row_position, column_position]
                     )
         verifications.append(Verification(
-            verification_id=deepcopy(rows["verification_id"].iloc[0]),
+            verification_id=deepcopy(grouping_key(rows["verification_id"].iloc[0])),
             rows=rows,
         ))
     return verifications

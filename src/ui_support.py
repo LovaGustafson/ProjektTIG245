@@ -17,9 +17,12 @@ class UploadResult:
     downloads: dict[str, bytes]
     source_content: bytes
     excluded_types: tuple[str, ...] | None
+    registry_content: bytes | None = None
+    registry_snapshot_date: object = None
 
 
-def analyze_upload(content: bytes, *, excluded_verification_types=None) -> UploadResult:
+def analyze_upload(content: bytes, *, excluded_verification_types=None,
+                   registry_content=None, registry_snapshot_date=None) -> UploadResult:
     """Analyze a private working copy; collect downloads before deleting files.
 
     Upload names are never used as paths. PipelineResult.report_paths refer to
@@ -29,12 +32,19 @@ def analyze_upload(content: bytes, *, excluded_verification_types=None) -> Uploa
         root = Path(directory)
         source = root / 'upload.xlsx'
         source.write_bytes(content)
+        registry_path = None
+        if registry_content is not None:
+            registry_path = root / 'registry.xlsx'
+            registry_path.write_bytes(registry_content)
         result = run_pipeline(source, output_dir=root / 'reports',
-                              excluded_verification_types=excluded_verification_types)
+                              excluded_verification_types=excluded_verification_types,
+                              supplier_register=registry_path,
+                              registry_snapshot_date=registry_snapshot_date)
         downloads = {path.name: path.read_bytes() for path in result.report_paths.values()}
-    downloads.update(review_workbooks(result.original_data, result.filtering))
+    downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis))
     return UploadResult(result, downloads, bytes(content),
-                        None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)))
+                        None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)),
+                        registry_content, registry_snapshot_date)
 
 
 def flagged_table(result: PipelineResult) -> pd.DataFrame:

@@ -10,6 +10,9 @@ from typing import Literal
 
 import pandas as pd
 
+from src.filtering.transaction_rows import non_transaction_reason
+from src.mapping.identifiers import normalize_identifier
+
 
 REQUIRED_FIELDS = (
     "verification_id",
@@ -30,8 +33,9 @@ class ValidationError:
 @dataclass(frozen=True)
 class RowValidationResult:
     row_position: int
-    validation_status: Literal["VALID", "INVALID"]
+    validation_status: Literal["VALID", "INVALID", "NOT_APPLICABLE"]
     validation_errors: tuple[ValidationError, ...]
+    skipped_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,12 +85,16 @@ def validate(data: pd.DataFrame, *, date_format: str | None = None) -> Validatio
     row_position is zero-based and remains unambiguous with duplicate index
     labels. No data values, index labels, columns or dtypes are modified; the
     result contains only validation metadata, not a transformed DataFrame.
-    Missing/duplicate required columns appear in schema_errors and each row's
-    errors. Empty inputs return no rows, with schema errors where applicable.
+    Missing/duplicate required columns appear in schema_errors and each
+    transaction row's errors. Recognized report rows retain their positions with
+    NOT_APPLICABLE and a skipped_reason, without invoice-value errors. Missing
+    IDs alone never identify a report row. Empty inputs retain schema errors.
 
-    Identifiers and accounts must be nonblank strings per the internal model.
-    Their exact text is used for identity: no trimming, case folding or removal
-    of leading zeros. Line IDs accept finite integer-valued numbers or numeric
+    Identifier/account comparison keys accept nonblank text and finite integral
+    Python/NumPy Excel numbers. Numbers normalize to integer text without
+    rounding; source values remain unchanged. Text uses its exact spelling: no
+    trimming, case folding, decimal parsing or removal of leading zeros.
+    Line IDs accept finite integer-valued numbers or numeric
     strings; 1, 1.0 and '01' have the same integer identity. All occurrences of
     a duplicate identity are invalid, even if they have other errors. Incomplete
     or invalid identities are not compared for uniqueness.
@@ -120,10 +128,17 @@ def validate(data: pd.DataFrame, *, date_format: str | None = None) -> Validatio
             positions[field] = matches[0]
 
     errors_by_row = []
+    skipped_rows = {}
     identities = defaultdict(list)
     # Include the index during iteration so even rows with no columns survive.
     for row_position, indexed_values in enumerate(data.itertuples(index=True, name=None)):
         values = indexed_values[1:]
+        if len(data.columns):
+            report_reason = non_transaction_reason(pd.Series(values, index=data.columns, dtype=object))
+            if report_reason:
+                skipped_rows[row_position] = report_reason
+                errors_by_row.append([])
+                continue
         errors = list(schema_errors)
         identity = {}
         for field, position in positions.items():
@@ -132,10 +147,11 @@ def validate(data: pd.DataFrame, *, date_format: str | None = None) -> Validatio
                 errors.append(ValidationError(field, "missing_value", f"Missing {field}"))
                 continue
             if field in ("verification_id", "account"):
-                valid = isinstance(value, str)
-                message = f"{field} must be a nonblank string"
+                normalized = normalize_identifier(value)
+                valid = normalized is not None
+                message = f"{field} must be nonblank text or a finite integer-valued Excel number"
                 if valid and field == "verification_id":
-                    identity[field] = value
+                    identity[field] = normalized
             elif field == "verification_date":
                 valid = _date_valid(value, date_format)
                 message = "verification_date is not a valid date in the accepted format"
@@ -167,7 +183,10 @@ def validate(data: pd.DataFrame, *, date_format: str | None = None) -> Validatio
 
     return ValidationResult(
         rows=tuple(
-            RowValidationResult(position, "INVALID" if errors else "VALID", tuple(errors))
+            RowValidationResult(position,
+                                "NOT_APPLICABLE" if position in skipped_rows else
+                                "INVALID" if errors else "VALID",
+                                tuple(errors), skipped_rows.get(position))
             for position, errors in enumerate(errors_by_row)
         ),
         schema_errors=tuple(schema_errors),

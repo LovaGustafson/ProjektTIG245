@@ -10,6 +10,8 @@ from src.presentation import SOURCE_NAMES, check_message, summary_counts
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
 from src.ui_filter_panel import filter_panel, clear_ui_filters
+from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
+from src.supplier_matching.settings import load_matching_settings, snapshot_date
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -176,6 +178,7 @@ def show_result(review):
         ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
+        show_supplier_summary(result.supplier_analysis)
         st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
                    'Även rader med valideringsfel finns kvar för granskning.')
         show_review_table(result, kept, key='review_rows')
@@ -186,7 +189,11 @@ def show_result(review):
         st.caption('Raderna finns kvar här med samtliga exkluderingsorsaker.')
         show_filtered_table(excluded, view='excluded')
     with controls:
-        st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
+        if result.supplier_analysis is None:
+            st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
+        else:
+            st.info('Leverantörsmatchning visas under Granskning. Avtalstrohet har inte kontrollerats; '
+                    'vilket avtal fakturan avser behöver utredas.')
         st.info('Attestkontroll – ej tillgänglig. Attestregister saknas.')
         st.info('Kontroll av rätt attestant – ej tillgänglig. Kräver attestregister. Framtida funktion.')
         show_overview(result, flagged, errors)
@@ -252,6 +259,7 @@ def show_filtered_table(data, *, view):
 
 
 def show_review_table(result, kept, *, key):
+    kept = supplier_review_table(kept, result.supplier_analysis)
     filtered = filter_panel(kept, view=key, selection_key=key)
     selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
                              key=key, on_select='rerun', selection_mode='single-row')
@@ -271,7 +279,9 @@ def show_review_row(result, position):
             st.warning(message)
         if not warnings:
             st.caption('Inga valideringsvarningar har rapporterats för raden.')
-        st.caption('Alla tillgängliga originalfält visas. Leverantörsidentifiering väntar på AK:s bekräftelse.')
+        source_position = result.filtering.cleaned_data.index[position]
+        show_supplier_detail(result.supplier_analysis, source_position)
+        st.caption('Alla tillgängliga originalfält visas oförändrade.')
         # Vertical text avoids truncating long source texts inside table cells.
         for name, value in fields.itertuples(index=False, name=None):
             st.text(str(name))
@@ -295,7 +305,9 @@ def show_filters(review):
         st.caption('Konto 7698 och 7699 exkluderas alltid. Tom Vertyp behålls.')
     previous = tuple(sorted(defaults)) if review.excluded_types is None else review.excluded_types
     if tuple(sorted(selected)) != previous:
-        updated = analyze_upload(review.source_content, excluded_verification_types=selected)
+        updated = analyze_upload(review.source_content, excluded_verification_types=selected,
+                                 registry_content=review.registry_content,
+                                 registry_snapshot_date=review.registry_snapshot_date)
         clear_ui_filters()
         st.session_state.pop('selected_verification', None)
         st.session_state.pop('review_rows', None)
@@ -318,12 +330,20 @@ def main():
         st.subheader('Ladda upp underlag')
         st.caption('Excel (.xlsx), första kalkylbladet. Alla rader behandlas.')
         upload = st.file_uploader('Välj Excel-fil', type=['xlsx'], on_change=clear_result)
+        registry_upload = st.file_uploader('Koncerninköpsregister (valfritt)', type=['xlsx'],
+                                          on_change=clear_result)
+        registry_date = st.date_input('Registerutdragets datum',
+            value=snapshot_date(load_matching_settings()['registry_snapshot_date']),
+            on_change=clear_result,
+            help='Används för att varna när transaktionen är senare än registerutdraget.')
         start = st.button('Starta analys', disabled=upload is None, type='primary')
     if start:
         clear_result()
         try:
             with st.spinner('Analyserar samtliga rader…'):
-                st.session_state['review'] = analyze_upload(upload.getvalue())
+                st.session_state['review'] = analyze_upload(upload.getvalue(),
+                    registry_content=registry_upload.getvalue() if registry_upload else None,
+                    registry_snapshot_date=registry_date)
         except Exception:
             st.error('Analysen kunde inte slutföras. Kontrollera att filen är en giltig Excel-fil '
                      'och att projektets inställningar är korrekta.')

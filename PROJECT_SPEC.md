@@ -1,3 +1,53 @@
+# Tillägg – leverantörsmatchning mot Koncerninköp, 2026-09-17
+
+Detta tillägg återger den nya uppgiften och har företräde framför äldre
+beskrivningar av leverantörskontroll nedan.
+
+- `Motp` / `counterparty` är metadata, aldrig leverantörs-ID. Exakt betydelse,
+  inklusive `Motp = 100`, inväntar AK. Ingen ny Vertyp införs; `FBFM` är korrekt.
+- Efter grundfiltrering extraheras `supplier_text_raw` ur `header_text` före
+  första fristående `Prelb` eller `Slutk`. Utan markör gissas inget namn.
+- Namn jämförs med en deterministisk normalisering i en separat modul. Original
+  och svenska tecken behålls; HB och KB blir aldrig samma bolagsform.
+- Koncerninköp läses separat med explicit, konfigurerbar rubrikmappning.
+  Avtalsfält: `supplier_name`, `organization_number`, `contract_name`,
+  `reference_number`, `start_date`, `end_date`, `contract_id`,
+  `contract_category`, `level_1`, `level_2`, `level_3`.
+- Matchningsordning: exakt normaliserat namn, försiktig trunkering, hög fuzzy-
+  likhet. Flera rimliga juridiska personer ger alltid manuell kontroll, även
+  om en kandidat har exakt namn. Samma organisationsnummer samlar flera avtal;
+  saknat organisationsnummer kan inte ge stark match.
+- Radstatus är `STRONG_MATCH`, `AMBIGUOUS_MATCH`, `NO_MATCH` eller
+  `SUPPLIER_NOT_IDENTIFIED`. Statusen beskriver endast leverantörsmatchningen,
+  aldrig om leverantören är upphandlad eller köpet följer ett avtal. Vid saknat
+  eller oläsbart register är matchningen otillgänglig; inga NO_MATCH fabriceras.
+- Resultat innehåller normaliserat namn, vald leverantör/organisationsnummer
+  endast vid stark träff, metod, score, motivering och kandidat-/avtalsantal.
+  Kandidater och samtliga möjliga avtalsrader finns separat. Koppling till
+  ursprungsraden sker via `source_row_position`, inte via Motp eller Vernr.
+- `registry_snapshot_date` anges i konfiguration (initialt 2026-08-31) och kan
+  ändras i UI/CLI. `registry_date_warning` och förklaring är separata från
+  namnmatchningen. Saknat/ogiltigt transaktionsdatum redovisas som okontrollerat.
+- Streamlit och Excel-export visar resultat, kandidater, möjliga avtal och
+  registerproblem utan att ändra ursprungsvärden. Kontrollen av avtalstrohet
+  förblir ej genomförd. En framtida resolver för internt leverantörs-ID och
+  organisationsnummer kan ersätta namnmatcharen utan att ändra resultatmodellen.
+- Tomma rapportrader, upprepade tabellrubriker och tydligt märkta summa-/
+  rapportrader utan transaktionsuppgifter läggs i Bortfiltrerade med orsak.
+  Ofullständiga fakturor behålls för validering. Metadata före rubriken hanteras
+  fortsatt av Excel-läsaren. TODO: verifiera rapportformatet mot verklig fil.
+
+Tekniska trösklar och kvarvarande begränsningar beskrivs i README och
+`config/settings.yaml`. De är försiktiga prototypinställningar, inte bekräftade
+affärsregler. TODO / AK: exakt registerlayout, eventuell dubbletthantering,
+internt leverantörs-ID → organisationsnummer och koppling av vara/tjänst till
+avtalskategori. Ingen sådan varu-/tjänsteklassificering implementeras nu.
+
+Referensvärden, endast för validering med samma verkliga filer: 836 kvarvarande
+transaktioner, 825 med markör, 11 utan, 139 efter registerdatum. Tidigare
+matchning: 508 starka, 4 osäkra, 313 utan säker träff och 11 ej identifierade.
+Motp 100: 564 rader (506/4/54). Dessa tal får inte styra produktionslogiken.
+
 # Aktuell avgränsning – MoSCoW, september 2026
 
 Detta tillägg preciserar prototypens nuvarande version och har företräde framför
@@ -61,6 +111,15 @@ Beskrivning: Unikt verifikationsnummer.
 Datatyp: `integer`
 Obligatorisk: Ja
 Beskrivning: Radnummer inom verifikationen.
+
+Excel-gräns för identifierare: `Vernr` kan läsas som Python-/NumPy-heltal eller
+flyttal. Ändliga matematiskt heltaliga värden, exempelvis `3934106.0`, använder
+`"3934106"` som intern validerings-/grupperingsnyckel. Decimalvärden som
+`3934106.5`, booleska värden och oändlighet är ogiltiga. Samma värdetypsgräns
+gäller `account`. Text-ID behåller sin exakta stavning, inklusive inledande
+nollor; text som `"3934106.0"` tolkas inte om till ett numeriskt ID.
+Originalceller, arbetskopians källvärden och radexporter ändras aldrig.
+`Vrad` behåller sin befintliga heltalsvalidering.
 
 ## Transaktion
 
@@ -190,6 +249,11 @@ Följande fält betraktas som obligatoriska:
 Om något obligatoriskt fält saknas ska raden markeras som ogiltig eller ofullständig.
 
 Systemet ska inte krascha på grund av saknade värden.
+
+Strukturellt identifierade tomma/summa-/rapportrader får valideringsstatus
+`NOT_APPLICABLE` med förklaring och inga fakturavärdesfel. Samma identifiering
+används av grundfiltret; filens schemafel redovisas fortsatt. Ett saknat Vernr
+på en transaktionsrad är fortfarande ett valideringsfel.
 
 Frivilliga fält får innehålla `null`.
 

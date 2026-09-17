@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import pandas as pd
 import yaml
+from src.filtering.transaction_rows import non_transaction_reason
 
 DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[2] / 'config/settings.yaml'
 
@@ -85,6 +86,10 @@ def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH,
                     count += 1
         counts.append(count)
         details[field] = matches
+    for position, (_, row) in enumerate(data.iterrows()):
+        structural_reason = non_transaction_reason(row)
+        if structural_reason:
+            reasons[position].append(structural_reason)
     mask = [bool(reason) for reason in reasons]
     return FilterResult(data.iloc[[i for i, hit in enumerate(mask) if not hit]].copy(deep=True),
                         data.iloc[[i for i, hit in enumerate(mask) if hit]].copy(deep=True),
