@@ -68,8 +68,8 @@ def test_streamlit_and_downloads_report_only_real_identifier_errors(tmp_path):
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert next(metric for metric in app.metric if metric.label == 'Valideringsfel').value == '2'
-    assert next(metric for metric in app.metric if metric.label == 'Analyserade').value == '3'
+    assert app.button(key='control_validation').label == '**2**  \nValideringsfel'
+    assert app.button(key='control_analyzed').label == '**3**  \nAnalyserade'
     exported = pd.read_excel(BytesIO(review.downloads['granskning.xlsx']))
     assert exported['Vernr'].iloc[0] == 3934106.0
     assert exported['Vernr'].iloc[4] == 3934106.5

@@ -64,7 +64,13 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     assert not app.exception
     assert [b.label.split('**')[1] for b in app.button
             if b.key and b.key.startswith('kpi_')] == ['44', '43', '1', '0', '1']
-    assert [m.value for m in app.metric] == ['42', '0', '1', '168']
+    assert {b.key: b.label for b in app.button
+            if b.key and b.key.startswith('control_')} == {
+        'control_analyzed': '**42**  \nAnalyserade',
+        'control_flagged': '**0**  \nFlaggade',
+        'control_validation': '**1**  \nValideringsfel',
+        'control_not_checked': '**168**  \nEj kontrollerade',
+    }
     review = app.session_state['review']
     download_labels = {
         'granskning.xlsx': 'Kvar för granskning',
@@ -83,7 +89,7 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.button[0].click().run()
     assert not app.exception
     app.file_uploader[0].set_value(('bad.xlsx', b'not excel', MIME)).run()
-    assert len(app.metric) == 0
+    assert not any(b.key and b.key.startswith(('kpi_', 'control_')) for b in app.button)
     app.button[0].click().run()
     assert not app.exception
     assert 'Analysen kunde inte slutföras' in app.error[0].value
