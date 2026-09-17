@@ -6,11 +6,13 @@ import pandas as pd
 
 from src.filtering.filter_engine import load_exclusions, normalize_type, filter_column_errors
 from src.output.report_generator import review_tables, review_summary
-from src.presentation import SOURCE_NAMES, check_message, summary_counts
+from src.presentation import SOURCE_NAMES, check_message
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
 from src.ui_filter_panel import filter_panel, clear_ui_filters
 from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
+from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
+from src.ui_navigation import home, select_drilldown, active_drilldown
 from src.supplier_matching.settings import load_matching_settings, snapshot_date
 
 
@@ -52,40 +54,46 @@ REPORT_LABELS = {
 
 
 def clear_result():
-    clear_ui_filters()
-    st.session_state.pop('review_rows', None)
-    st.session_state.pop('kpi_review_rows', None)
-    st.session_state.pop('selected_kpi', None)
+    home()
     st.session_state.pop('review', None)
-    st.session_state.pop('selected_verification', None)
     st.session_state.pop('excluded_types', None)
 
 
 def show_overview(result, flagged, errors):
     st.subheader('Analysöversikt')
     st.caption('En samlad bild av det analyserade underlaget.')
+    checks = pd.DataFrame([
+        {'Verifikation': str(detection.verification_id),
+         'Kontroll': CHECK_LABELS.get(check.check_type, check.check_type),
+         'Status': STATUS_LABELS.get(check.status, check.status),
+         'Beskrivning': check_message(check)}
+        for detection in result.detection_results for check in detection.checks
+    ], columns=['Verifikation', 'Kontroll', 'Status', 'Beskrivning'])
+    # Each card and its table use the same record set and unit (not invoice rows).
+    analyzed = pd.DataFrame([
+        {'Verifikation': str(detection.verification_id),
+         'Antal rader': len(verification.rows)}
+        for detection, verification in zip(result.detection_results, result.verifications)
+    ], columns=['Verifikation', 'Antal rader'])
+    views = {
+        'analyzed': ('Analyserade', analyzed, 'verifikationer'),
+        'flagged': ('Flaggade', flagged, 'verifikationer'),
+        'validation': ('Valideringsfel', errors, 'valideringsfel'),
+        'not_checked': ('Ej kontrollerade', checks[checks['Status'] == 'Ej kontrollerad'], 'kontroller'),
+    }
     with st.container(key='kpi_grid'):
-        a, b, c, d = st.columns(4)
-        a.metric('Analyserade', len(result.detection_results), border=True,
-                 help='Antal analyserade verifikationer, inte antal Excel-rader.')
-        b.metric('Flaggade', len(flagged), border=True,
-                 help='Antal verifikationer med minst en flaggningsorsak.')
-        c.metric('Valideringsfel', len(errors), border=True,
-                 help='Varje radfel räknas separat. Filfel räknas en gång.')
-        d.metric('Ej kontrollerade',
-                 summary_counts(result.standardized_data, result.validation,
-                                result.detection_results)['not_checked_results'],
-                 border=True, help='Antal kontroller som inte kunde genomföras. Avser kontroller, inte verifikationer.')
+        for column, (key, (label, data, unit)) in zip(st.columns(4), views.items()):
+            column.button(f'**{len(data)}**  \n{label}', key='control_' + key, width='stretch',
+                          help=f'Visa {unit}', on_click=select_drilldown,
+                          args=('selected_control', key, 'control_' + key))
+    selected = st.session_state.get('selected_control')
+    if selected in views:
+        label, data, unit = views[selected]
+        active_drilldown(f'{label} ({unit})', 'control')
+        show_filtered_table(data, view='control_' + selected)
     with st.expander('Alla kontrollresultat'):
         st.caption('Varje genomförd, ej genomförd eller avbruten kontroll visas med sin förklaring.')
-        checks = [
-            {'Verifikation': str(detection.verification_id),
-             'Kontroll': CHECK_LABELS.get(check.check_type, check.check_type),
-             'Status': STATUS_LABELS.get(check.status, check.status),
-             'Beskrivning': check_message(check)}
-            for detection in result.detection_results for check in detection.checks
-        ]
-        if checks:
+        if not checks.empty:
             st.dataframe(display_dataframe(checks), hide_index=True, width='stretch')
         else:
             st.info('Det finns inga kontrollresultat att visa.')
@@ -209,9 +217,8 @@ def show_result(review):
 
 
 def select_kpi(key):
-    if st.session_state.get('selected_kpi') != key:
-        st.session_state.pop('kpi_review_rows', None)
-    st.session_state['selected_kpi'] = key
+    view = 'kpi_review_rows' if key == 'review' else f'kpi_{key}'
+    select_drilldown('selected_kpi', key, view)
 
 
 def show_dashboard_kpis(result):
@@ -230,9 +237,12 @@ def show_dashboard_kpis(result):
         return
     with st.container(border=True, key='kpi_detail'):
         st.subheader(list(counts)[keys.index(selected)])
+        active_drilldown(list(counts)[keys.index(selected)], 'dashboard')
         if selected == 'total':
             st.write('Alla inlästa datarader visas här. Metadata-rader ovanför den identifierade '
-                     'header-raden räknas inte, och header-raden räknas inte som en datarad.')
+                     'header-raden räknas inte, och header-raden räknas inte som en datarad. '
+                     'Rapportfötter ingår i inlästa rader men räknas inte som transaktioner '
+                     'eller kvar för granskning.')
             show_filtered_table(result.original_data, view='kpi_total')
         elif selected == 'review':
             st.info(REVIEW_EXPLANATION)
@@ -259,13 +269,20 @@ def show_filtered_table(data, *, view):
 
 
 def show_review_table(result, kept, *, key):
+    selected = st.session_state.get('selected_supplier') if key == 'review_rows' else None
+    if selected and result.supplier_analysis and result.supplier_analysis.registry.available:
+        analysis = result.supplier_analysis
+        label = list(analysis.summary())[SUPPLIER_VIEWS.index(selected)]
+        active_drilldown(label, 'supplier')
+        kept = kept.loc[kept.index.isin(supplier_positions(analysis, selected))]
     kept = supplier_review_table(kept, result.supplier_analysis)
     filtered = filter_panel(kept, view=key, selection_key=key)
     selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
                              key=key, on_select='rerun', selection_mode='single-row')
     st.caption('Markera en rad i tabellen för att visa källvärden och valideringsvarningar.')
-    if selection.selection.rows:
-        show_review_row(result, filtered.positions[selection.selection.rows[0]])
+    if selection.selection.rows and selection.selection.rows[0] < len(filtered.positions):
+        source_position = kept.index[filtered.positions[selection.selection.rows[0]]]
+        show_review_row(result, result.filtering.cleaned_data.index.get_loc(source_position))
 
 
 def show_review_row(result, position):
@@ -295,6 +312,7 @@ def show_filters(review):
                if list(data.columns).count('verification_type') == 1 else [])
     options = sorted(set(defaults) | set(present))
     with st.sidebar:
+        st.button('Till översikt', key='home', icon=':material/home:', on_click=home)
         st.subheader('Exkluderingsregler (MoSCoW)')
         st.caption('Valda typer exkluderas. Ta bort ett val för att återinkludera typen.')
         if st.button('Återställ filter till standard'):

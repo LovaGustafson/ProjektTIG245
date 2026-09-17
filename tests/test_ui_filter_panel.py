@@ -122,7 +122,7 @@ def test_filtered_selection_maps_to_original_row_and_clears_on_change():
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)
 
 
-def test_kpi_filter_persistence_and_reset_on_rule_change_and_new_upload():
+def test_kpi_click_restores_exact_card_rows_and_reset_on_rule_change_and_new_upload():
     app, _ = start()
     app.button(key='kpi_review').click().run()
     choose(app, 'kpi_review_rows', 'Konto')
@@ -131,7 +131,8 @@ def test_kpi_filter_persistence_and_reset_on_rule_change_and_new_upload():
     app.button(key='kpi_excluded').click().run()
     app.button(key='kpi_review').click().run()
     assert not app.exception
-    assert app.dataframe[0].value['Vernr'].tolist() == ['005']
+    # A fresh card click shows exactly its count, clearing only that view.
+    assert app.dataframe[0].value['Vernr'].tolist() == ['001', '005', '006']
     assert len(app.tabs[0].dataframe[0].value) == 3
     app.multiselect(key='excluded_types').unselect('KR01').run()
     assert not app.exception

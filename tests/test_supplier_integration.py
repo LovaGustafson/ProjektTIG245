@@ -110,7 +110,7 @@ def test_empty_filtered_result_with_loaded_registry_renders_and_exports():
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert [metric.value for metric in app.metric[:6]] == ['0'] * 6
+    assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('supplier_')] == ['0'] * 6
     data = pd.read_excel(BytesIO(review.downloads['granskning.xlsx']))
     assert data.empty and 'supplier_match_status' in data.columns
 
@@ -137,10 +137,10 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     app.file_uploader[1].set_value(('registry.xlsx', registry_content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert [m.value for m in app.metric[:6]] == ['6', '2', '1', '1', '2', '2']
+    assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('supplier_')] == ['6', '2', '1', '1', '2', '2']
     table = app.tabs[0].dataframe[0]
     assert table.value['Leverantörsträff'].iloc[0] == '🟢 Stark leverantörsträff'
-    assert table.value['Leverantörsträff'].iloc[1] == '🟡 Möjlig/flera leverantörsträffar'
+    assert table.value['Leverantörsträff'].iloc[1] == '🟡 Osäker träff – manuell granskning'
     states = app._tree.get_widget_states()
     state = states.widgets.add()
     state.id = table.proto.id

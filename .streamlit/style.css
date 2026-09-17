@@ -170,3 +170,24 @@
 @media (max-width: 640px) {
     .st-key-dashboard_kpis [data-testid="stColumn"] { flex: 1 1 100%; min-width: 100%; }
 }
+
+/* Supplier and control summaries are keyboard-accessible card buttons too. */
+.st-key-supplier_kpis button, .st-key-kpi_grid button {
+    min-height: 8rem;
+    height: 100%;
+    padding: 1rem;
+    text-align: left;
+    border-top: 3px solid var(--audit-accent);
+}
+.st-key-supplier_kpis button p, .st-key-kpi_grid button p {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.st-key-supplier_kpis button strong, .st-key-kpi_grid button strong {
+    font-size: 2rem;
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1050px) {
+    .st-key-supplier_kpis [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-supplier_kpis [data-testid="stColumn"] { flex: 1 1 45%; min-width: 45%; }
+}

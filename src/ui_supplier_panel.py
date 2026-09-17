@@ -3,13 +3,25 @@ import pandas as pd
 import streamlit as st
 
 from src.ui_support import display_dataframe
+from src.ui_navigation import select_drilldown
 
 STATUS_LABELS = {
     'STRONG_MATCH': '🟢 Stark leverantörsträff',
-    'AMBIGUOUS_MATCH': '🟡 Möjlig/flera leverantörsträffar',
+    'AMBIGUOUS_MATCH': '🟡 Osäker träff – manuell granskning',
     'NO_MATCH': '🟠 Ingen match i aktuellt Koncerninköpsregister',
     'SUPPLIER_NOT_IDENTIFIED': '⚪ Leverantör kunde inte identifieras',
 }
+
+SUPPLIER_VIEWS = ('all', *STATUS_LABELS, 'date_warning')
+
+
+def supplier_positions(analysis, key):
+    rows = analysis.rows
+    if key == 'date_warning':
+        rows = rows[rows['registry_date_warning'].astype(bool)]
+    elif key != 'all':
+        rows = rows[rows['supplier_match_status'] == key]
+    return rows['source_row_position'].tolist()
 
 
 def show_supplier_summary(analysis):
@@ -23,8 +35,11 @@ def show_supplier_summary(analysis):
         return
     st.caption(f'Registerutdrag: {analysis.registry.snapshot_date or "datum saknas"}. '
                'En leverantörsträff visar möjliga avtal. Vilket avtal köpet avser är inte bedömt.')
-    for column, (label, count) in zip(st.columns(6), analysis.summary().items()):
-        column.metric(label, count)
+    with st.container(key='supplier_kpis'):
+        for column, key, (label, count) in zip(st.columns(6), SUPPLIER_VIEWS, analysis.summary().items()):
+            column.button(f'**{count}**  \n{label}', key='supplier_' + key, width='stretch',
+                          on_click=select_drilldown, args=('selected_supplier', key, 'review_rows'),
+                          type='primary' if st.session_state.get('selected_supplier') == key else 'secondary')
     unknown_dates = int((analysis.rows['registry_date_check'] == 'UNKNOWN').sum())
     if unknown_dates:
         st.warning(f'{unknown_dates} rader kunde inte datumkontrolleras. Se raddetaljer.')
@@ -43,7 +58,11 @@ def supplier_review_table(kept, analysis):
         while label in display.columns:
             label = '_' + label
         values = evidence[field]
-        display[label] = (values.map(STATUS_LABELS) if field == 'supplier_match_status' else values).tolist()
+        if field == 'supplier_match_status':
+            values = values.map(STATUS_LABELS)
+        elif field == 'registry_date_warning':
+            values = values.map({True: '🟣 Registerdatumvarning', False: '—'})
+        display[label] = values.tolist()
     return display
 
 
@@ -55,9 +74,24 @@ def show_supplier_detail(analysis, source_position):
         return
     row = matches.iloc[0]
     st.subheader(STATUS_LABELS[row['supplier_match_status']])
+    colors = {'STRONG_MATCH': 'green', 'AMBIGUOUS_MATCH': 'yellow',
+              'NO_MATCH': 'orange', 'SUPPLIER_NOT_IDENTIFIED': 'gray'}
+    st.badge(STATUS_LABELS[row['supplier_match_status']], color=colors[row['supplier_match_status']])
     st.text(row['supplier_match_reason'])
+    if row['supplier_match_status'] == 'STRONG_MATCH':
+        st.caption('Leverantören är starkt identifierad i aktuellt register. '
+                   'Detta bedömer inte fakturans riktighet eller om köpet omfattas av avtal.')
+    elif row['supplier_match_status'] == 'NO_MATCH':
+        st.text('Sökt leverantörsnamn: ' + str(row['supplier_text_raw']))
+    elif row['supplier_match_status'] == 'AMBIGUOUS_MATCH':
+        st.warning('Manuell granskning krävs. Jämför kandidaterna och matchningsorsakerna nedan; '
+                   'ingen leverantör har valts automatiskt.')
+    if row['registry_date_warning']:
+        st.badge('Registerdatumvarning', color='violet')
     if row['registry_date_message']:
         st.warning(row['registry_date_message'])
+    else:
+        st.caption('Ingen registerdatumvarning: transaktionen är inte senare än registerutdraget.')
     details = [('Leverantör från Huvudtext', row['supplier_text_raw']),
                ('Normaliserad jämförelsetext', row['supplier_normalized']),
                ('Matchad leverantör', row['matched_supplier_name']),
@@ -71,7 +105,8 @@ def show_supplier_detail(analysis, source_position):
                'Exakt träff har score 1. Metod och osäkerhetsorsaker styr bedömningen.')
     candidates = analysis.candidates[analysis.candidates['source_row_position'] == source_position]
     if not candidates.empty:
-        with st.expander('Leverantörskandidater och matchningsorsaker'):
+        with st.expander('Leverantörskandidater och matchningsorsaker',
+                         expanded=row['supplier_match_status'] == 'AMBIGUOUS_MATCH'):
             st.dataframe(display_dataframe(candidates.drop(columns='source_row_position')),
                          hide_index=True, width='stretch')
     contracts = analysis.contracts[analysis.contracts['source_row_position'] == source_position]
