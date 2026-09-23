@@ -577,9 +577,15 @@ If these conditions are not met, the functionality should remain deferred.
 
 # Won't Have This Time
 
-These are consciously excluded from the current delivery.
+Won't Have This Time requirements are consciously excluded from the current delivery scope.
 
-This does not mean "never"; it means "not now."
+This does **not** mean that these ideas are rejected permanently. It means that they are not part of the current priority baseline and must not be implemented unless the project scope is explicitly changed.
+
+Codex must not interpret existing scaffolding, placeholders, TODOs, experimental code, or historical plans as permission to implement functionality listed in this section.
+
+If a future customer decision moves one of these items into Must, Should, or Could Have, the requirements documentation must be updated before implementation.
+
+---
 
 ## W1 — Fully automated process
 
@@ -587,29 +593,143 @@ Customer requirement:
 
 > Helt automatiserad process. Kontroll av attester, underlag etc.
 
-Do not implement full automation of attest controls, supporting documentation checks, or equivalent processes in the current scope.
+Status:
+- OUT OF CURRENT SCOPE
+- FUTURE POSSIBILITY
+
+Interpretation:
+- The current prototype is intended to support human review, not replace it.
+- The customer does not currently require a fully automated control process.
+- Human judgment and review remain part of the workflow.
+
+The current prototype may:
+- ingest supplied files,
+- validate technical data,
+- apply confirmed filtering rules,
+- identify and flag potential issues,
+- perform deterministic supplier matching,
+- create review material,
+- create samples,
+- support manual review.
+
+The current prototype must not autonomously:
+- approve or reject transactions,
+- determine whether an attest is correct,
+- determine whether supporting documentation is sufficient,
+- make final procurement/compliance decisions,
+- perform final audit conclusions,
+- replace required human review.
+
+Existing placeholders or unfinished modules related to attest or business controls must not be completed solely because they already exist in the repository.
+
+Important status semantics:
+- `NOT_CHECKED` must never be interpreted or displayed as `PASS`.
+- Lack of a detected deviation does not automatically constitute business approval.
+- A technical match or validation result must not be converted into a final business decision without a confirmed rule.
+
+Future possibility:
+- Individual parts of the process may be automated later if the customer confirms the relevant business rules, governance, data access, and responsibilities.
 
 ---
 
-## W2 — New system solutions
+## W2 — New system solutions / Proceedo integration
 
 Customer requirement:
 
 > Nya systemlösningar. Kunna göra bättre rapportuttag från Proceedo (Marknadsplatsen).
 
-Do not expand the current scope into replacement systems, integrations, or new reporting solutions for Proceedo unless the project scope is formally changed.
+Status:
+- OUT OF CURRENT SCOPE
+- FUTURE POSSIBILITY
+
+Current source model:
+- The authoritative source system is Proceedo.
+- The customer currently performs the extract from Proceedo.
+- The prototype receives and analyzes the supplied Excel file.
+- The prototype does not have direct access to Proceedo.
+
+Current scope rule:
+- Do not build direct Proceedo integration.
+- Do not build a replacement for Proceedo.
+- Do not build new reporting infrastructure inside Proceedo.
+- Do not automate extraction from Proceedo.
+- Do not introduce APIs, scraping, scheduled imports, or other direct connections to Proceedo without an explicit scope change and customer approval.
+
+The prototype may:
+- document that the supplied source file originates from Proceedo,
+- preserve information about the supplied source file,
+- reconcile the population received by the prototype,
+- improve how the supplied Excel data is reviewed and exported.
+
+Important distinction:
+- The prototype may verify that all records supplied to it are accounted for.
+- The prototype cannot independently verify that the customer's Proceedo extract contains the complete source-system population because the project has no direct access to Proceedo.
+
+Future possibility:
+- Improved extraction or system integration may be considered in a later project phase if VGR provides access, technical requirements, security approval, and explicit scope.
 
 ---
 
-## W3 — Advanced analysis functions
+## W3 — Advanced analysis functions not required for the control
 
 Customer requirement:
 
 > Avancerade analysfunktioner som inte krävs för kontrollen.
 
-Do not implement advanced analytical functionality unless it directly supports an approved current requirement.
+Status:
+- OUT OF CURRENT CORE SCOPE
+- CASE-BY-CASE FUTURE POSSIBILITY
+
+Interpretation:
+- The prototype should remain focused on analysis that supports the actual review process.
+- Advanced analysis must not be added merely because it is technically possible or because data is available.
+
+Existing approved functionality:
+- Existing supplier matching and related analysis remain part of the prototype.
+- Existing analysis must not be removed simply because it is not currently classified as a Must Have.
+- Existing analysis must still respect confirmed business rules and human-review boundaries.
+
+Do not implement speculative functionality such as:
+- autonomous fraud detection,
+- predictive risk scoring without an approved methodology,
+- AI-generated compliance decisions,
+- advanced anomaly models without confirmed review purpose,
+- automated attest conclusions,
+- automated procurement-violation conclusions,
+- opaque scoring models that cannot be explained and traced back to source data.
+
+New analysis may only be considered when:
+1. There is a clear review purpose.
+2. The customer or project has confirmed the intended interpretation.
+3. Required source data is available.
+4. The result can be explained.
+5. Source traceability is preserved.
+6. Human review remains possible.
+7. The work does not delay higher-priority requirements.
+
+Important:
+- A supplier name match is not contract compliance.
+- A statistical or technical anomaly is not automatically a business deviation.
+- An AI-generated interpretation is not a final control conclusion.
 
 ---
+
+## Scope rule for Won't Have This Time
+
+Functionality in this section must not be implemented as part of ordinary feature development.
+
+Before work begins on any Won't Have item:
+
+1. The customer must explicitly change or expand the scope.
+2. The requirement must be moved to the appropriate MoSCoW category.
+3. Relevant business rules must be documented.
+4. Required security, data-protection, and AI-governance questions must be resolved where applicable.
+5. PROJECT_SPEC.md must be updated to describe the confirmed technical behavior.
+6. Appropriate tests and acceptance criteria must be defined.
+
+Existing code, TODOs, historical specifications, or experimental functionality do not override this rule.
+
+"Won't Have This Time" means "not in the current delivery", not "never".
 
 # Priority Rules for Development
 
