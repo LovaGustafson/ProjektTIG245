@@ -132,6 +132,52 @@ Customer requirement:
 
 > Hålla sig inom VGRs riktlinjer för AI-användande.
 
+Status:
+- PARTIALLY DEFINED / GOVERNANCE REQUIREMENT
+
+Customer-provided guidance establishes the following principles:
+
+1. VGR-recommended AI services should be used in the first instance:
+   - VGR's internal chatbot
+   - Copilot within VGR's M365 environment
+
+2. A suitability assessment must be made before generative AI is used for a work task.
+
+3. Secret, sensitive, personal, or sensitive internal information must not be submitted to AI services where such sharing is inappropriate.
+
+4. AI-generated output must always be fact-checked and reviewed by a human.
+
+5. Generative AI must be used as a complement to human work and must not replace human responsibility or judgment.
+
+6. The user remains responsible for AI-assisted output.
+
+7. Use of generative AI in producing material must be disclosed where applicable.
+
+8. Information created using AI remains subject to VGR's normal information-management requirements.
+
+### Development guardrail
+
+External development assistants such as Codex must not be provided with real VGR source data, sensitive information, personal data, or sensitive internal working material unless explicitly approved by VGR.
+
+Codex-assisted development must therefore use synthetic, anonymized, public, or otherwise approved material.
+
+### Application design principle
+
+The TIG245 prototype must not treat AI output as an autonomous business decision.
+
+Human review remains required for:
+- flagged deviations
+- validation results
+- supplier-related conclusions
+- review decisions
+- exported review material
+
+### Verification status
+
+The repository may implement technical safeguards supporting these principles, but full VGR compliance must not be claimed solely from technical implementation.
+
+Formal compliance/approval remains an organizational governance decision.
+
 Implementation status:
 
 - Requires source documentation / verification
@@ -145,7 +191,13 @@ Important:
 
 # Should Have
 
-Important requirements, but not absolutely critical for the current delivery.
+Important requirements that provide significant value but are lower priority than the current Must Have baseline.
+
+Should Have requirements are not prohibited. They may be implemented opportunistically when they can be solved safely, with low complexity, and without delaying, weakening, or creating risk for Must Have work.
+
+Codex must not expand a Should Have requirement into a large feature unless explicitly instructed.
+
+---
 
 ## S1 — Automated data-quality controls
 
@@ -154,10 +206,36 @@ Customer requirement:
 > Automatiserade kontroller av datakvalitet.
 
 Customer note:
-
 - Later
 
-Do not prioritize for the current implementation unless explicitly requested.
+Status:
+- PARTIALLY IMPLEMENTED
+- LOWER PRIORITY / OPPORTUNISTIC
+
+Interpretation:
+- The customer considers this capability useful but not currently critical.
+- Existing automated data-quality controls should be preserved.
+- Additional controls may be implemented if they are low-risk, clearly beneficial, and do not delay or complicate Must Have work.
+
+Current implementation:
+- The prototype already performs several technical data-quality checks.
+- Existing validation includes checks for schema, identifiers, dates, amounts, mandatory technical fields, and some duplicate identities.
+- Existing automated controls must remain functional unless a confirmed customer requirement explicitly changes them.
+
+Current scope rule:
+- Do not prioritize expansion of automated data-quality controls ahead of unresolved Must Have requirements.
+- Do not invent new business-specific controls without confirmed customer rules.
+- If a simple, well-supported improvement can be made safely while working on related Must Have functionality, it may be included.
+
+Important distinction:
+- A technical validation error is not automatically the same as a business deviation.
+- Validation results must not automatically be interpreted as failed internal control.
+- A warning should not automatically become a business flag unless a confirmed business rule says so.
+
+Acceptance for current phase:
+- Existing controls continue to function.
+- No regression is introduced.
+- New controls are only added when explicitly required or when they clearly support a confirmed Must Have requirement.
 
 ---
 
@@ -167,9 +245,45 @@ Customer requirement:
 
 > Dokumenterad arbetsinstruktion.
 
-Implementation status:
+Status:
+- PARTIALLY IMPLEMENTED
+- SHOULD BE COMPLETED WHEN THE CURRENT PROCESS IS STABLE ENOUGH TO DOCUMENT ACCURATELY
 
-- To be assessed
+Current implementation:
+- README and existing project documentation describe technical installation and use of the prototype.
+- Parts of the review workflow are already documented.
+- The prototype has a defined technical flow from file upload through analysis, review, sampling, and export.
+
+Missing:
+- A complete customer-facing work instruction covering the practical review process from received source file to final review material.
+
+The future work instruction should, when the relevant rules are sufficiently confirmed, explain at minimum:
+
+1. How the source file is received.
+2. That the current source extract is provided by the customer from Proceedo.
+3. That the project team does not have direct access to Proceedo and therefore cannot independently verify source-system completeness.
+4. How the received population is checked and reconciled within the prototype.
+5. Which confirmed account and Vertyp exclusions are applied.
+6. How excluded rows remain traceable and are not silently deleted.
+7. How invalid or incomplete records are handled.
+8. How possible duplicates are handled once the customer duplicate rule is confirmed.
+9. How the review population is created.
+10. How every 20th verification is selected.
+11. How flagged records are reviewed.
+12. How exported review material is generated and used.
+13. How traceability back to the supplied source data is maintained.
+14. Which steps require human review.
+15. How AI-assisted development or analysis must comply with applicable VGR guidelines.
+
+Current scope rule:
+- Do not invent procedures for unresolved requirements.
+- Open customer decisions must remain clearly marked as open rather than being presented as established working instructions.
+- The work instruction should reflect actual implemented behavior, not intended future functionality.
+
+Acceptance for current phase:
+- Technical documentation remains accurate.
+- The customer-facing work instruction is updated progressively as Must Have rules become confirmed.
+- The final instruction must not claim that unresolved controls are already implemented.
 
 ---
 
@@ -180,10 +294,43 @@ Customer requirement:
 > Kollegial kontroll av uttag och rensning.
 
 Customer note:
-
 - Later
 
-Do not prioritize for the current implementation unless explicitly requested.
+Status:
+- NOT FORMALLY IMPLEMENTED
+- LOWER PRIORITY / OPPORTUNISTIC
+
+Interpretation:
+- The customer is interested in this capability, but it is not currently a critical delivery requirement.
+- A lightweight solution may be considered if it can be implemented without adding unnecessary complexity or delaying Must Have work.
+
+Current state:
+- Another person can inspect the review material and exported results.
+- This must not be interpreted as a formal peer-review or approval workflow.
+- The current prototype does not maintain a formal reviewer record or sign-off state.
+
+Possible lightweight future approaches may include:
+- reviewer name or initials,
+- review status,
+- timestamp for completed review,
+- simple review comment,
+- export field indicating whether peer review has occurred.
+
+These are possibilities, not confirmed customer requirements.
+
+Open questions:
+- Who performs the peer review?
+- Which parts of the process require review?
+- Does the Proceedo source extraction itself require peer review?
+- Does cleansing/filtering require a separate review step?
+- Should reviewer identity be stored?
+- Should review approval be recorded inside the prototype or outside it?
+- Is a lightweight exported review record sufficient, or is an in-application workflow required?
+
+Current scope rule:
+- Simple review support may be added opportunistically when it naturally fits related work.
+- Do not build a complex reviewer, permissions, approval, or sign-off workflow before the customer clarifies the intended process.
+- Do not describe ordinary inspection of the UI or Excel exports as formal peer review.
 
 ---
 
@@ -193,17 +340,66 @@ Customer requirement:
 
 > Avvikelselista med kommentarer.
 
-Implementation status:
+Status:
+- PARTIALLY IMPLEMENTED
 
-- To be assessed
+Current implementation:
+- The prototype already produces several forms of flagged or explanatory results.
+- Detection results can contain reasons for flagged records.
+- Validation issues can be surfaced.
+- Supplier-related statuses and explanations may also be presented.
+- Flagged results can be included in review and export material.
+- Invalid or incomplete records should remain available for review rather than being silently removed.
 
-Clarification required:
+Current limitation:
+- There is not yet one unified customer-approved deviation list containing all relevant deviation categories.
+- Manual reviewer comments are not currently a confirmed persistent workflow.
+- Validation findings, detection flags, supplier statuses, possible duplicates, and exclusions are currently conceptually different result types and must not be merged without preserving their meaning.
 
-- Which deviations should be included?
-- Which comments should be generated automatically versus entered manually?
-- Required export/output format is not yet specified here.
+Target principle:
+- Relevant deviations should be possible to collect into a clearly identifiable review output.
+- Each deviation should retain enough information to understand:
+  - which source record it concerns,
+  - why it was flagged,
+  - which rule or check generated it,
+  - where it originated in the supplied source data,
+  - whether the finding is technical, business-related, supplier-related, or unresolved.
 
----
+Possible deviation sources include:
+- invalid or incomplete records,
+- confirmed detection flags,
+- possible duplicates once the duplicate rule is confirmed,
+- supplier-related findings where applicable,
+- other customer-confirmed deviations.
+
+Important distinctions:
+- NOT_CHECKED must not be treated as PASS.
+- NOT_CHECKED must not automatically be treated as a deviation either.
+- A validation warning must not automatically become a business deviation.
+- A supplier name match must not automatically be represented as contract compliance.
+- An excluded record is not automatically a deviation; confirmed exclusions are a separate category.
+- A possible duplicate must remain a possible duplicate until the customer duplicate definition is confirmed.
+
+Comments:
+- The customer requirement explicitly mentions comments.
+- It is currently not confirmed whether comments should:
+  - be entered manually in the prototype,
+  - be generated automatically,
+  - be stored persistently,
+  - or simply be available as an editable/exported field in Excel.
+
+Open question:
+- What type of comment workflow does the customer want?
+
+Possible low-complexity approach:
+- Add an optional comment column in exported deviation material without introducing a complex in-application comment system.
+
+This should only be treated as a possible implementation approach, not a confirmed requirement.
+
+Acceptance for current phase:
+- Existing flagged information remains available.
+- Flagged records retain explanatory reasons.
+-
 
 # Could Have
 
