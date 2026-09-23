@@ -24,7 +24,7 @@ The system is developed as part of the TIG245 project course.
 
 🚧 Prototype under development.
 
-The system is being implemented step by step according to `PROJECT_SPEC.md`.
+Development follows the current customer priorities in `docs/requirements/MOSCOW_CURRENT.md`; `PROJECT_SPEC.md` describes current technical behavior and limitations.
 
 Some business rules are still awaiting confirmation from AK.
 
@@ -32,13 +32,12 @@ Some business rules are still awaiting confirmation from AK.
 
 ## Documentation
 
-### `AGENTS.md`
+- [Current MoSCoW requirements](docs/requirements/MOSCOW_CURRENT.md): confirmed facts, priorities and scope boundaries.
+- [Open customer questions](docs/requirements/OPEN_QUESTIONS.md): unresolved decisions; these are not permission to invent behavior.
+- [Technical specification](PROJECT_SPEC.md): current modules, fields, processing semantics, exports and known evidence limitations.
+- [Agent instructions](AGENTS.md): repository-wide development and data-safety rules.
 
-Contains instructions for Codex and rules for how code should be implemented.
-
-### `PROJECT_SPEC.md`
-
-Contains the technical specification, data model, detection rules and implementation order.
+Confirmed customer requirements take priority over the technical specification, followed by implementation/tests and then historical plans/comments. Historical implementation orders do not authorize new work.
 
 ---
 
@@ -126,14 +125,13 @@ kortets förklaring. Leverantörskorten räknar kvarvarande transaktionsrader.
 Datumvarningen visas separat och ersätter aldrig leverantörsstatusen.
 Osäkra träffar visar kandidater och motivering till manuell granskning.
 
-Verifiering med de lokala originalfilerna 2026-09-17: den extra raden på
-källposition 4764 är en rapportfot med rapporttitel, sidnumrering och utskriftstid.
-Alla tre signaler och avsaknad av transaktionsidentitet krävs för denna
-igenkänning. Raden bevaras i Bortfiltrerade och valideras som `NOT_APPLICABLE`.
-Resultatet är 836 kvarvarande transaktioner, 836 leverantörsanalyser och 139
-datumvarningar. Totalt inlästa rader inkluderar rapportfoten; det måttet är inte
-ett transaktionsantal. Källfilerna kontrollerades med SHA-256 och ändringstid
-före/efter körningen och var oförändrade. Inga verkliga rader används som testdata.
+Den implementerade rapportfotsigenkänningen kräver rapporttitel, sidnumrering
+och utskriftstid samt avsaknad av de transaktionsfält som kontrolleras i
+`src/filtering/transaction_rows.py`. Raden bevaras i Bortfiltrerade och
+valideras som `NOT_APPLICABLE`. Totalt inlästa rader inkluderar rapportfoten;
+det måttet är inte ett transaktionsantal. Beteendet täcks av syntetiska tester.
+Den generella kundgränsen mellan strukturella rapportrader och felaktiga
+granskningsposter är fortfarande öppen (Q5).
 
 CLI stöder också `.csv` för registret:
 
@@ -190,24 +188,30 @@ läser registret, och `src/models/supplier.py` beskriver leverantörsidentiteter
 och resultat. `Motp` används aldrig som leverantörsnyckel. En framtida
 ID-resolver kan ge samma resultatmodell. Köp–avtalskategori implementeras inte.
 
-Excel-exporterna för granskning, rensat underlag, stickprov och avvikelser
-får matchningsfält samt separata blad för **Registerinformation**,
+När leverantörsmatchningen är tillgänglig får Excel-exporterna för
+granskning, rensat underlag, stickprov och avvikelser matchningsfält samt
+separata blad för **Registerinformation**,
 **Leverantörsmatchning**, **Leverantörskandidater** och **Möjliga avtal**.
 `source_row_position` kopplar detaljer till den inlästa tabellens radposition
 (från 0, inte Excel-radnummer). Originalkolumner skrivs aldrig över; eventuella
 namnkrockar ger ett `_`-prefix på det tillagda fältet. Saknat eller oläsbart
 register redovisas som otillgänglig matchning, aldrig som NO_MATCH. Loggning
-innehåller sammanfattade antal; beslutens fulla förklaringar sparas i resultatet.
+innehåller sammanfattade antal; matchningsresultatens fulla förklaringar sparas
+i resultatet. Källpositioner tillförs inte på detta sätt när registret saknas
+eller är oanvändbart, och inte till bortfiltrerade rader. Exporternas exakta
+spårbarhet är därför ännu ofullständig; se PROJECT_SPEC.md avsnitt 15.
 
 Grundfiltret behåller de 42 befintliga Vertyp-koderna, inklusive **FBFM**;
 **FBRM** läggs inte till. Konto 7698/7699 fungerar med tal och text.
 Tomma rapportrader, upprepade rubriker och tydligt märkta summa-/rapportrader
 utan transaktionsuppgifter bevaras i Bortfiltrerade med orsak. Andra ofullständiga
-rader behålls för validering. TODO: kontrollera detta mot det verkliga rapportformatet.
+rader behålls för validering. Den generella hanteringen av strukturella och
+ogiltiga poster behöver kundförtydligande enligt Q5.
 
-De verkliga faktura-/registerfilerna finns inte i projektets datamappar.
-Referensvärdena **836 / 825 / 11**, **508 / 4 / 313 / 11** och **139 datumvarningar**
-har därför inte verifierats. Testerna använder syntetiska data och omfattar även
+Tidigare anteckningar om resultat från verkliga faktura-/registerfiler kan inte
+återverifieras från det spårade repositoryt: källfiler och körningsbevis ingår
+inte. De ska därför inte användas som verifierade acceptansresultat för aktuell
+kod. Testerna använder syntetiska data och omfattar även
 trunkeringsexemplen, bolagsformskonflikter, flera juridiska personer, flera avtal,
 filernas oförändrade bytes/mtime, Streamlit-raddetaljer och Excel-export.
 
@@ -242,7 +246,9 @@ förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
 - Konton normaliseras vid filterjämförelsen (tal, text och omgivande blanksteg).
   Valideringen accepterar även heltaliga Excel-tal enligt ovan. Originalvärden behålls.
 - Valideringsdetaljer och samtliga kontrollresultat finns i UI/minnesresultatet;
-  Excel innehåller underlag, flaggningar, stickprov och sammanfattning.
+  de exporteras inte fullständigt. CLI skapar rensat underlag, flaggningar,
+  stickprov och analysens sammanfattning, men sparar inte bortfiltrerade rader
+  eller deras orsaker. Streamlit erbjuder separata gransknings-/exkluderingsexporter.
 - `code` i flaggrapporten är tomt: `check_type` identifierar kontrollen men är
   inte en orsakskod. Samma kontroll kan ge flera olika orsaker.
 - Egna framtida kontrolltexter behöver översättningar; originalorsaken bevaras.
@@ -253,8 +259,9 @@ förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
 ## Configuration and pending decisions
 
 `config/settings.yaml` records the confirmed account exclusions (`7698`, `7699`)
-and the baseline sampling interval of 20 verifications.
-`excluded_verification_types` contains the 42 unique MoSCoW exclusions.
+and `manual_sample_interval: 20` for the confirmed every-20th eligible-verification rule.
+`excluded_verification_types` contains the existing 42 standard exclusions;
+approval/evidence for changes to selections remains Q8.
 `required_fields` remains `null`: **TODO / awaiting business confirmation**.
 
 The business `required_fields` setting is separate from the five mandatory
@@ -263,8 +270,11 @@ row-validation fields already defined in the specification: `verification_id`,
 
 AK must also confirm field meanings, the internal supplier ID mapping and
 attestation rules. The new name-based prototype uses Huvudtext, never
-`counterparty`, for supplier candidates. The final sampling method remains
-open to confirmation.
+`counterparty`, for supplier candidates. Sampling selects positions 20, 40, 60,
+etc. in first-appearance order after base filtering/grouping and analysis of
+all eligible verifications, independently of detection flags. Complete retained
+verification groups are selected. The interval is confirmed; only the required
+sampling evidence/documentation remains open (Q2).
 
 ## Data handling
 
@@ -276,6 +286,10 @@ Keep real invoices and sensitive registers in the ignored local data folders;
 do not commit them elsewhere or force-add them. Data and log folders contain
 only tracked `.gitkeep` placeholders. Future committed test fixtures must use
 synthetic, non-sensitive data.
+
+Local storage is not permission to share data with an external AI assistant.
+Follow the development guardrail in MoSCoW M7; applicable guidance and explicit
+approval for project-data use remain governance questions in Q9.
 
 ## MoSCoW-filter och export
 
@@ -291,7 +305,7 @@ Konto- och typantal kan överlappa; totalantalet räknar varje bortfiltrerad rad
 endast en gång. Originalets kolumnnamn och värden används i granskningsvyerna
 samt de nya exporterna. Exkluderingsorsaker ligger i en separat tillagd kolumn.
 
-Export erbjuder `granskning.xlsx`, `bortfiltrerade.xlsx` och
+Streamlit erbjuder `granskning.xlsx`, `bortfiltrerade.xlsx` och
 `samlad_kontrollfil.xlsx` (Granskning, Bortfiltrerade, Sammanfattning).
 Befintliga avvikelse- och stickprovsrapporter finns också kvar. Nedladdningarna
 skapas i minnet; ingen källsökväg används som exportmål. Originalets filbytes och

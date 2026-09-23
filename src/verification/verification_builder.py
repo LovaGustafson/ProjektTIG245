@@ -24,8 +24,10 @@ def build_verifications(data: pd.DataFrame) -> list[Verification]:
 
     Null grouping keys are retained using pandas' dropna=False semantics, so
     they cannot silently discard rows. This is not a valid-identity decision.
-    TODO: the pipeline must define how to route rows with invalid identities
-    after validation; a null-key group must not imply one real verification.
+    src/pipeline.py routes retained rows with unusable verification IDs to
+    ungrouped_data before calling this builder. Final business disposition
+    remains open (OPEN_QUESTIONS.md Q5); a null-key group created by a direct
+    caller must not imply one real verification.
     """
     verifications = []
     def grouping_key(value):

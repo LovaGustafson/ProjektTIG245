@@ -53,10 +53,11 @@ def read_reference(
 ) -> ReferenceReadResult:
     """Load an .xlsx worksheet or CSV as an independent, uninterpreted table.
 
-    Assumptions/TODO: confirm register layouts with AK. The first record is the
-    header. Excel defaults to worksheet 0, with explicit name/index selection;
+    Register layouts still require confirmation where not established. Excel
+    uses excel_reader header detection and defaults to worksheet 0, with
+    explicit name/index selection. CSV uses its first record as the header;
     sheet_name does not apply to CSV. CSV defaults to comma and UTF-8 (optional
-    BOM), with explicit delimiter/encoding overrides. No format sniffing occurs.
+    BOM), with explicit delimiter/encoding overrides and no delimiter sniffing.
     Inconsistent CSV widths and broken quoting are file-format errors, not
     business-schema validation. Empty/header-only Excel sheets and header-only
     CSVs are loaded without inventing required columns or row counts.

@@ -22,7 +22,7 @@ def create_manual_sample(
     The caller must supply every relevant, already-analyzed verification once,
     normally in the builder's first-appearance order. Analysis completion is a
     caller precondition: Verification has no analysis-completion marker.
-    TODO: enforce analysis-before-sampling when the pipeline is implemented.
+    src/pipeline.py completes detection for all eligible verifications first.
     The iterable is fully consumed before selecting any verifications.
 
     No sorting, filtering by detection outcome, or row-level selection occurs.
@@ -30,8 +30,10 @@ def create_manual_sample(
     Selected rows (including mutable object cells) are copied independently.
     Invalid business values are retained without interpretation.
 
-    TODO: AK may revise the final selection method; this implements the
-    positional baseline in PROJECT_SPEC.md section 5.11.
+    The confirmed interval is 20, as configured in the repository. See
+    PROJECT_SPEC.md, "13. Manual sampling". Customer requirements for selection
+    evidence/documentation remain open (OPEN_QUESTIONS.md Q2); the interval is
+    not an unresolved decision.
     """
     with Path(settings_path).open(encoding="utf-8") as settings_file:
         settings = yaml.safe_load(settings_file)
