@@ -197,6 +197,14 @@ Should Have requirements are not prohibited. They may be implemented opportunist
 
 Codex must not expand a Should Have requirement into a large feature unless explicitly instructed.
 
+## Priority principle for Should Have requirements
+
+Should Have requirements are lower priority than Must Have requirements, but they are not prohibited.
+
+If a Should Have requirement can be implemented safely, with low complexity, and without delaying or creating risk for Must Have work, it may be included opportunistically.
+
+Codex must not expand a Should Have requirement into a large feature without explicit instruction.
+
 ---
 
 ## S1 — Automated data-quality controls
@@ -403,13 +411,58 @@ Acceptance for current phase:
 
 # Could Have
 
-Desirable features that provide additional value but are not necessary for the current core control process.
+Could Have requirements are desirable features that may provide additional value, but they are not necessary for the current core control process.
+
+These requirements must not delay, complicate, or introduce risk to unresolved Must Have work.
+
+Could Have requirements are not prohibited. If a low-risk improvement can be added naturally while working on higher-priority functionality, it may be included when the benefit is clear and the implementation is proportionate.
+
+Codex must not expand a Could Have requirement into a large feature or redesign without explicit instruction.
+
+---
 
 ## C1 — Data visualizations
 
 Customer requirement:
 
 > Visualiseringar av data.
+
+Status:
+- PARTIALLY IMPLEMENTED
+- OPTIONAL / OPPORTUNISTIC
+
+Current implementation:
+- The Streamlit interface already provides visual presentation through:
+  - KPI cards,
+  - status indicators,
+  - structured tables,
+  - summaries,
+  - interactive filtering,
+  - supplier-related summaries where applicable.
+
+Interpretation:
+- The customer has expressed interest in visualizations, but no specific chart type, metric, dashboard layout, or visualization requirement has been confirmed.
+- Existing UI elements may already satisfy part of the intended value.
+
+Possible future improvements may include:
+- charts showing included versus excluded records,
+- counts of flagged records,
+- distribution of validation outcomes,
+- sampling summaries,
+- supplier-related status distributions,
+- other visual summaries that improve understanding of the review population.
+
+Current scope rule:
+- Do not create visualizations merely for appearance.
+- A visualization should support a real review or decision-support need.
+- Do not prioritize visualization work ahead of unresolved Must Have requirements.
+- Do not invent business meaning from technical statuses.
+- NOT_CHECKED must not be presented visually as PASS.
+- Validation warnings, detection flags, supplier statuses, and exclusions must remain conceptually distinct.
+
+Acceptance for current phase:
+- Existing visual UI functionality is preserved.
+- New visualizations may be added when they provide clear review value and can be implemented safely without affecting core analysis behavior.
 
 ---
 
@@ -419,19 +472,108 @@ Customer requirement:
 
 > Automatiska dashboards.
 
+Status:
+- PARTIALLY IMPLEMENTED
+- OPTIONAL / OPPORTUNISTIC
+
+Current implementation:
+- The Streamlit application already provides dashboard-like analysis views after the user runs an analysis.
+- Current functionality includes overview metrics, result summaries, review navigation, and drill-down into different result categories.
+
+Important distinction:
+- The current prototype provides a dashboard based on a user-triggered analysis.
+- It does not currently provide:
+  - scheduled data ingestion,
+  - unattended background processing,
+  - automatic refresh from Proceedo,
+  - continuous monitoring,
+  - autonomous reporting.
+
+Interpretation:
+- The customer requirement may refer either to richer analysis dashboards or to more automated dashboard operation.
+- The exact intended level of automation has not been confirmed.
+
+Current scope rule:
+- Existing dashboard functionality should be preserved.
+- Additional dashboard components may be added when they improve understanding of existing confirmed analysis results.
+- Do not implement scheduled ingestion, Proceedo integration, unattended automation, or background monitoring under this requirement unless scope is explicitly changed.
+- Dashboard improvements must not alter the underlying analysis logic.
+
+Possible future improvements:
+- clearer overview of source population,
+- included and excluded counts,
+- number of flagged records,
+- sampling information,
+- review progress,
+- traceability summaries,
+- deviation summaries.
+
+Acceptance for current phase:
+- Dashboard information must reflect actual analysis results.
+- Displayed counts must remain consistent with the underlying data.
+- New dashboard elements must not create new business conclusions that are not supported by confirmed rules.
+
 ---
 
-## C3 — Additional analysis
+## C3 — Additional analyses for increased understanding
 
 Customer requirement:
 
 > Ytterligare analyser som ger ökad förståelse.
 
-Important:
+Status:
+- PARTIALLY IMPLEMENTED
+- REQUIRES CASE-BY-CASE ASSESSMENT
 
-- Could Have work must not take priority over incomplete Must Have requirements.
+Current implementation:
+- The prototype already contains analysis beyond basic filtering and validation, including supplier-related matching and register-related information.
+- Existing analysis functionality should remain part of the prototype unless explicitly removed from scope.
+
+Interpretation:
+- Additional analysis is welcome when it clearly improves understanding of the review material.
+- However, "increased understanding" is not itself a sufficient acceptance criterion for building new analysis functionality.
+
+Potential future analysis may be considered when:
+- it addresses a real review question,
+- the required business rule is known,
+- the underlying data supports the analysis,
+- the result can be explained and traced back to source data,
+- the analysis does not replace required human judgment,
+- it does not delay higher-priority requirements.
+
+Current scope rule:
+- Do not invent new analytical controls simply because data is available.
+- Do not infer compliance, fraud, incorrect attest, procurement violation, or other business conclusions without confirmed rules and evidence.
+- New analysis must remain explainable.
+- Results must preserve source traceability.
+- Existing supplier matching must not be represented as final contract-compliance approval.
+- Advanced or speculative analytics that are not required for the control process remain outside the current scope.
+
+Acceptance for current phase:
+- Existing approved analysis remains functional.
+- New analysis may be introduced opportunistically when its purpose, input, interpretation, and output are clear.
+- Every new analysis must distinguish between:
+  - observed data,
+  - deterministic technical result,
+  - warning or indicator,
+  - final human review decision.
 
 ---
+
+## Priority principle for Could Have requirements
+
+Could Have requirements may be implemented when all of the following are true:
+
+1. The change has a clear user or review benefit.
+2. It does not delay unresolved Must Have work.
+3. It does not introduce significant technical or business risk.
+4. It does not require Codex to invent an unresolved business rule.
+5. It preserves source-data traceability.
+6. It preserves existing analysis semantics.
+7. It does not create autonomous business decisions.
+8. The implementation effort is proportionate to the value created.
+
+If these conditions are not met, the functionality should remain deferred.
 
 # Won't Have This Time
 
