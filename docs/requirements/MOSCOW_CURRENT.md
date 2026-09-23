@@ -21,14 +21,16 @@ Customer requirement:
 
 > Underlaget kommer från rätt källa/system.
 
-Implementation status:
+Status:
+- SOURCE MODEL CONFIRMED / SOURCE ASSURANCE EVIDENCE UNRESOLVED
 
-- To be assessed
+Confirmed facts:
+- Proceedo is the authoritative source system.
+- The customer performs the extraction and supplies the resulting Excel file.
+- The prototype reads that file; the project has no direct Proceedo access.
+- Reading the file does not authenticate its origin or independently verify Proceedo.
 
-Clarification required:
-
-- Which source/system is considered authoritative?
-- How should the application verify this?
+Open question: what evidence establishes source authenticity, and who supplies/reviews it? See [Q4](OPEN_QUESTIONS.md#q4--source-and-extract-assurance).
 
 ---
 
@@ -38,15 +40,18 @@ Customer requirement:
 
 > Populationen är komplett.
 
-Implementation status:
+Status:
+- PARTIALLY IMPLEMENTED FOR THE RECEIVED POPULATION
+- SOURCE-SYSTEM COMPLETENESS NOT INDEPENDENTLY VERIFIED
 
-- To be assessed
+Current capability and boundary:
+- The prototype can account for the parsed population supplied to it through retained and excluded rows with reasons.
+- Currently one worksheet is read, and metadata above the detected header is outside the parsed table. This is not a completeness check of an entire source system or arbitrary workbook.
+- Streamlit provides included/excluded counts and review exports; CLI reports do not yet persist all exclusion evidence.
+- The customer extracts from Proceedo. Without independent evidence, the prototype cannot confirm that the extract includes the entire required source-system population.
+- No supplied occurrence should silently disappear; technical ingestion success is not proof of completeness.
 
-Clarification required:
-
-- What defines a complete population?
-- Which records must be present?
-- How should completeness be verified?
+Open question: what defines the required extract population, what evidence reconciles it, and who is responsible? See [Q4](OPEN_QUESTIONS.md#q4--source-and-extract-assurance).
 
 ---
 
@@ -56,16 +61,17 @@ Customer requirement:
 
 > Dubbletter är borttagna.
 
-Implementation status:
+Status:
+- CUSTOMER DUPLICATE DEFINITION AND DISPOSITION UNRESOLVED
+- TECHNICAL IDENTITY CHECKS EXIST; AUTOMATIC REMOVAL IS PROHIBITED
 
-- To be assessed
+Current preservation rule:
+- Possible duplicates may be identified or flagged without deleting source occurrences.
+- Existing validation reports repeated technical verification/line identities. This does not establish the customer duplicate definition or satisfy a duplicate-removal requirement.
+- Grouping retains repeated rows; no survivor is selected.
+- Source-occurrence traceability must be preserved through any future confirmed handling.
 
-Clarification required:
-
-- What constitutes a duplicate?
-- Which fields determine duplicate identity?
-- Should duplicate rows be deleted, excluded from analysis, or retained with a status?
-- Traceability to original source data must not be lost.
+Open questions: duplicate identity, scope, handling and any survivor rule remain [Q1](OPEN_QUESTIONS.md#q1--duplicate-definition). Do not implement removal until those decisions are confirmed.
 
 ---
 
@@ -75,15 +81,17 @@ Customer requirement:
 
 > Felaktiga eller tomma poster är identifierade och hanterade.
 
-Implementation status:
+Status:
+- PARTIALLY IMPLEMENTED / FINAL BUSINESS HANDLING UNRESOLVED
 
-- To be assessed
+Current preservation rule and implementation:
+- Invalid or incomplete records must remain available with their technical findings, without silently removing or correcting them.
+- Confirmed account/selected `VERTYP` exclusions are separate from invalid records and detection flags; excluded occurrences remain accounted for with reasons where currently supported.
+- Technical validation checks the five fields documented in PROJECT_SPEC.md; this does not confirm mandatory business information or turn a validation error into a business deviation.
+- Retained rows with unusable verification IDs remain ungrouped and available for review, outside verification-level detection and sampling.
+- Existing recognition of blank/report rows produces `NOT_APPLICABLE` validation and explained exclusions. This is current technical behavior, not a resolved customer definition of the structural-row/business-record boundary.
 
-Clarification required:
-
-- Which fields are mandatory?
-- What constitutes an invalid record?
-- What does "hanterade" mean: exclude, flag, correct, or report?
+Open questions: structural-row boundaries and final invalid-record handling remain [Q5](OPEN_QUESTIONS.md#q5--structural-rows-and-invalid-record-handling); field meanings and mandatory business controls remain [Q10](OPEN_QUESTIONS.md#q10--field-meanings-and-business-controls).
 
 ---
 
@@ -93,15 +101,17 @@ Customer requirement:
 
 > Urvalskriterier är dokumenterade.
 
-Implementation status:
+Status:
+- SELECTION IMPLEMENTED / CUSTOMER EVIDENCE REQUIREMENTS UNRESOLVED
 
-- To be assessed
+Confirmed rule and current behavior:
+- Every 20th eligible verification is selected for manual control.
+- The implementation selects positions 20, 40, 60, etc. in first-appearance order after base filtering and grouping, following analysis of all eligible verifications.
+- Selection is at verification level and independent of flags; selected groups retain their rows. The configured interval is 20.
+- Changes to base filtering, grouping or ordering can change the sample; temporary UI view filters do not.
+- The selection criteria must be transparent and reproducible.
 
-Expected principle:
-
-- The system must make the rules used for selecting the review sample transparent and reproducible.
-
-Do not invent sampling rules that are not documented elsewhere in the project.
+Open question: what evidence/documentation of this selection does the customer require? See [Q2](OPEN_QUESTIONS.md#q2--sampling-evidence). The interval of 20 is already confirmed and is not reopened by this question.
 
 ---
 
@@ -111,18 +121,20 @@ Customer requirement:
 
 > Det finns spårbarhet mellan källdata och granskningsunderlag.
 
-Implementation status:
+Status:
+- PARTIALLY IMPLEMENTED / EXPORT TRACEABILITY INCOMPLETE
 
-- To be assessed
+Required principle:
+- Review material must be traceable to the exact source occurrence, including where business identifiers are repeated, missing or invalid.
+- `Vernr`/`Vrad` alone are not sufficient occurrence provenance; `Motp` is not a substitute.
+- Transformations, exclusions, grouping and sampling must preserve explainable linkage to the supplied material.
 
-Expected principle:
+Current implementation:
+- Parsed source positions survive through much of the in-memory pipeline and UI; supplier evidence uses retained source indexes.
+- Exports do not consistently carry source positions, and the result model does not retain the worksheet/header-offset information needed for an Excel-row locator.
+- Detection row positions and validation/source positions use different coordinate systems. Full traceability in every export is not yet implemented.
 
-- A record included in the review material must be traceable back to its source data.
-
-Clarification required:
-
-- Which identifier(s) constitute sufficient traceability?
-- How should transformed, filtered, excluded, or sampled records be represented?
+Open question: what source-occurrence information and presentation must accompany each review/export category? See [Q3](OPEN_QUESTIONS.md#q3--source-occurrence-traceability). This does not reopen the requirement to preserve occurrences.
 
 ---
 
@@ -197,14 +209,6 @@ Should Have requirements are not prohibited. They may be implemented opportunist
 
 Codex must not expand a Should Have requirement into a large feature unless explicitly instructed.
 
-## Priority principle for Should Have requirements
-
-Should Have requirements are lower priority than Must Have requirements, but they are not prohibited.
-
-If a Should Have requirement can be implemented safely, with low complexity, and without delaying or creating risk for Must Have work, it may be included opportunistically.
-
-Codex must not expand a Should Have requirement into a large feature without explicit instruction.
-
 ---
 
 ## S1 — Automated data-quality controls
@@ -243,7 +247,7 @@ Important distinction:
 Acceptance for current phase:
 - Existing controls continue to function.
 - No regression is introduced.
-- New controls are only added when explicitly required or when they clearly support a confirmed Must Have requirement.
+- Additional controls may be included opportunistically when they are useful, low-risk and low-complexity, do not delay or weaken Must Have work, and do not require invented business rules. Business-specific controls still require confirmed rules.
 
 ---
 
@@ -326,7 +330,7 @@ Possible lightweight future approaches may include:
 
 These are possibilities, not confirmed customer requirements.
 
-Open questions:
+Open questions (tracked in [Q6](OPEN_QUESTIONS.md#q6--peer-review-and-sign-off)):
 - Who performs the peer review?
 - Which parts of the process require review?
 - Does the Proceedo source extraction itself require peer review?
@@ -397,7 +401,7 @@ Comments:
   - or simply be available as an editable/exported field in Excel.
 
 Open question:
-- What type of comment workflow does the customer want?
+- What type of comment workflow does the customer want? See [Q7](OPEN_QUESTIONS.md#q7--deviation-comments-and-review-output).
 
 Possible low-complexity approach:
 - Add an optional comment column in exported deviation material without introducing a complex in-application comment system.
@@ -407,7 +411,6 @@ This should only be treated as a possible implementation approach, not a confirm
 Acceptance for current phase:
 - Existing flagged information remains available.
 - Flagged records retain explanatory reasons.
--
 
 # Could Have
 
@@ -574,6 +577,8 @@ Could Have requirements may be implemented when all of the following are true:
 8. The implementation effort is proportionate to the value created.
 
 If these conditions are not met, the functionality should remain deferred.
+
+Unconfirmed visualization, dashboard and additional-analysis needs are tracked in [Q11](OPEN_QUESTIONS.md#q11--optional-dashboard-and-analysis-needs).
 
 # Won't Have This Time
 

@@ -1,9 +1,10 @@
-# Confirmed exclusions (PROJECT_SPEC.md sections 3.1 and 4.6).
+# Confirmed account exclusions; see PROJECT_SPEC.md, "9. Filtering and exclusions".
 excluded_accounts:
   - "7698"
   - "7699"
 
-# Standard exclusions supplied in the MoSCoW requirements.
+# Existing standard verification-type exclusions; see PROJECT_SPEC.md section 9.
+# Approval/evidence for selection changes remains OPEN_QUESTIONS.md Q8.
 excluded_verification_types:
   - "AAHV90"
   - "AAHV94"
@@ -51,11 +52,11 @@ excluded_verification_types:
 # TODO: awaiting AK confirmation of mandatory business information and scope.
 # image_reference, signature and attestation are examples, not confirmed rules.
 # This setting is separate from the five required row-validation fields in
-# PROJECT_SPEC.md section 02.
+# PROJECT_SPEC.md, "8. Technical validation and duplicate semantics".
 required_fields: null
 
-# Baseline: approximately every twentieth verification after full analysis.
-# TODO: confirm the final selection method with AK before implementing sampling.
+# Confirmed: every 20th eligible verification, after analysis, in first-appearance order.
+# Implemented in src/sampling/manual_sample.py; evidence/documentation remains Q2.
 manual_sample_interval: 20
 
 # TODO / awaiting business confirmation:

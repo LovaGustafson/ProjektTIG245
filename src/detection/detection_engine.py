@@ -104,8 +104,9 @@ def run_detection(
     allowing future rules to consume evidence without adding logic to the engine.
 
     Existing rules do not yet consume ingestion results. They remain available
-    in the result context; TODO: extend individual rules after AK confirms how
-    to use image content and reference schemas. This engine never reads files.
+    in the result context. Future rule changes require confirmed evidence use
+    and reference schemas, plus an explicit scope change for any Won't Have
+    functionality. This engine never reads files.
 
     Raised exceptions, malformed outputs and empty rule outputs become ERROR
     results. Results yielded before a failure survive, and later rules still run.

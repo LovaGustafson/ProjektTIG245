@@ -20,7 +20,7 @@ Current technical behavior for confirmed requirements is defined in:
 
 For changes that affect application behavior, customer requirements, data handling, validation, filtering, detection, supplier matching, sampling, traceability, exports or UI semantics:
 
-1. Read the relevant requirement in `docs/requirements/MOSCOW_CURRENT.md`.
+1. Read the relevant requirement in `docs/requirements/MOSCOW_CURRENT.md` and related unresolved decisions in `docs/requirements/OPEN_QUESTIONS.md`.
 2. Read the relevant section of `PROJECT_SPEC.md`.
 3. Inspect the existing implementation and relevant tests before changing behavior.
 
@@ -126,7 +126,7 @@ Do not use `Motp` / `counterparty` as:
 ## Business rules
 
 - Do not invent business rules.
-- If a requirement is unclear or awaiting AK confirmation, preserve safe current behavior and report the unresolved question.
+- If a requirement is unclear or awaiting AK confirmation, consult `docs/requirements/OPEN_QUESTIONS.md`, preserve safe current behavior and report the missing decision.
 - Adding a TODO does not authorize implementing an assumption.
 - Do not guess the meaning of fields such as `Mm`, `Pg`, `Sign`, `Att`, `Ksansv` or `Bild`.
 - Do not infer source-system completeness from successfully reading an input file.
@@ -134,6 +134,7 @@ Do not use `Motp` / `counterparty` as:
 - Do not interpret technical validation failures as customer-approved business deviations unless explicitly defined.
 - Do not interpret supplier name matching as procurement or contract compliance.
 - Do not claim VGR AI compliance without the applicable VGR guidance and an explicit assessment.
+- Follow M7's data guardrail for external AI-assisted development; local storage or read-only access does not establish approval to share project data with an external service.
 - Do not promote technical defaults or prototype thresholds into business rules without confirmation.
 
 When a business decision is missing, report what information is required instead of selecting a plausible rule.
@@ -142,7 +143,7 @@ When a business decision is missing, report what information is required instead
 
 ## Population and source responsibility
 
-AK currently supplies the Excel verification list used by the prototype.
+AK currently supplies the Excel verification list extracted from Proceedo, the authoritative source system.
 
 The project team does not currently have direct access to the underlying source system.
 
@@ -232,7 +233,7 @@ Do not merge these four concepts into one status system or present one as proof 
 
 ## Supplier matching rules
 
-The current supplier-matching section in `PROJECT_SPEC.md` is authoritative for supplier analysis.
+The [Supplier matching section](PROJECT_SPEC.md#12-supplier-matching) defines the current technical contract for supplier analysis, subject to confirmed customer requirements.
 
 Key invariants:
 
@@ -269,7 +270,7 @@ Configuration values must not automatically be treated as customer-approved busi
 
 ## Code structure
 
-Use the standardized internal field names defined in `PROJECT_SPEC.md`.
+Use the [standardized internal fields](PROJECT_SPEC.md#7-standardized-fields) defined in `PROJECT_SPEC.md`.
 
 Keep major responsibilities separated, including:
 
@@ -307,9 +308,9 @@ Current principles include:
 - analysis occurs before manual sampling,
 - sampling occurs at verification level rather than raw Excel-row level,
 - selection must not depend on whether a verification was flagged,
-- the current technical interval is configuration-driven.
+- every 20th eligible verification is selected in the current first-appearance order, using the configured interval of 20.
 
-Do not change the sampling method solely because the customer-facing documentation format remains unresolved.
+Do not change the sampling method solely because the customer-facing evidence/documentation requirements remain unresolved (OPEN_QUESTIONS.md Q2).
 
 If a change affects:
 
