@@ -10,7 +10,7 @@ from src.models.supplier import ContractRegistry, Supplier
 from src.supplier_matching.normalization import normalize_supplier
 
 CONTRACT_FIELDS = ('supplier_name', 'organization_number', 'contract_name', 'reference_number',
-                   'start_date', 'end_date', 'contract_id', 'contract_category',
+                   'start_date', 'end_date', 'final_end_date', 'contract_id', 'contract_category',
                    'level_1', 'level_2', 'level_3')
 
 

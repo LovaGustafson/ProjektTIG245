@@ -14,6 +14,8 @@ from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, 
 from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
 from src.ui_navigation import home, select_drilldown, active_drilldown
 from src.supplier_matching.settings import load_matching_settings, snapshot_date
+from src.ui_run_summary import show_run_summary
+from src.ingestion.registry_source import default_registry_location
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -50,6 +52,11 @@ REPORT_LABELS = {
         'Verifikationsraderna i det stickprov som valts ut för manuell granskning.',
         'Hämta manuellt stickprov', 'secondary',
     ),
+    'uncertain_suppliers.xlsx': (
+        'Osäkra leverantörsträffar',
+        'Alla kvarvarande rader utan säker leverantörsträff, inklusive ej genomförbar matchning.',
+        'Hämta osäkra leverantörsträffar', 'secondary',
+    ),
 }
 
 
@@ -57,6 +64,13 @@ def clear_result():
     home()
     st.session_state.pop('review', None)
     st.session_state.pop('excluded_types', None)
+
+
+def change_registry(enabled, reset_upload=False):
+    st.session_state['registry_enabled'] = enabled
+    if reset_upload:
+        st.session_state['registry_upload_version'] = st.session_state.get('registry_upload_version', 0) + 1
+    clear_result()
 
 
 def show_overview(result, flagged, errors):
@@ -159,9 +173,9 @@ def show_reports(review):
     for filename, label in labels.items():
         st.download_button(label, review.downloads[filename], file_name=filename,
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    with st.expander('Avvikelser och separat manuellt stickprov'):
+    with st.expander('Avvikelser, manuellt stickprov och osäkra leverantörsträffar', expanded=True):
         st.caption('Stickprovet väljs efter analysen och begränsar inte vilka rader som granskas.')
-        for filename in ('flagged_invoices.xlsx', 'manual_sample.xlsx'):
+        for filename in ('flagged_invoices.xlsx', 'manual_sample.xlsx', 'uncertain_suppliers.xlsx'):
             st.download_button(REPORT_LABELS[filename][2], review.downloads[filename],
                                file_name=filename,
                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -181,7 +195,15 @@ def show_result(review):
                    icon=':material/warning:')
     for message in filter_column_errors(result.standardized_data):
         st.error(message)
+    for message in result.filtering.todos:
+        if message not in filter_column_errors(result.standardized_data):
+            st.warning(message)
     show_dashboard_kpis(result)
+    show_run_summary(result)
+    if result.supplier_analysis is not None:
+        registry = result.supplier_analysis.registry
+        st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
+                (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
     review_tab, excluded_tab, controls, reports, manual = st.tabs(
         ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
     kept, excluded = review_tables(result.original_data, result.filtering)
@@ -197,10 +219,10 @@ def show_result(review):
         st.caption('Raderna finns kvar här med samtliga exkluderingsorsaker.')
         show_filtered_table(excluded, view='excluded')
     with controls:
-        if result.supplier_analysis is None:
+        if result.supplier_analysis is None or not result.supplier_analysis.registry.available:
             st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
         else:
-            st.info('Leverantörsmatchning visas under Granskning. Avtalstrohet har inte kontrollerats; '
+            st.info('Leverantörsmatchning och separata avtalsperioder visas under Granskning. Avtalstrohet har inte kontrollerats; '
                     'vilket avtal fakturan avser behöver utredas.')
         st.info('Attestkontroll – ej tillgänglig. Attestregister saknas.')
         st.info('Kontroll av rätt attestant – ej tillgänglig. Kräver attestregister. Framtida funktion.')
@@ -325,7 +347,9 @@ def show_filters(review):
     if tuple(sorted(selected)) != previous:
         updated = analyze_upload(review.source_content, excluded_verification_types=selected,
                                  registry_content=review.registry_content,
-                                 registry_snapshot_date=review.registry_snapshot_date)
+                                 registry_snapshot_date=review.registry_snapshot_date,
+                                 registry_source=review.registry_source, source_name=review.source_name,
+                                 settings_path=review.settings_path)
         clear_ui_filters()
         st.session_state.pop('selected_verification', None)
         st.session_state.pop('review_rows', None)
@@ -348,20 +372,37 @@ def main():
         st.subheader('Ladda upp underlag')
         st.caption('Excel (.xlsx), första kalkylbladet. Alla rader behandlas.')
         upload = st.file_uploader('Välj Excel-fil', type=['xlsx'], on_change=clear_result)
-        registry_upload = st.file_uploader('Koncerninköpsregister (valfritt)', type=['xlsx'],
-                                          on_change=clear_result)
+        registry_config = load_matching_settings()
+        registry_upload = st.file_uploader('Byt koncerninköpsregister (valfritt)', type=['xlsx'],
+            key=f'registry_upload_{st.session_state.get("registry_upload_version", 0)}',
+            on_change=change_registry, args=(True,))
+        enabled = st.session_state.get('registry_enabled', True)
+        if not enabled:
+            st.caption('Avtalsregister avaktiverat. Ingen leverantörsmatchning genomförs.')
+        elif registry_upload:
+            st.text(f'Aktivt avtalsregister: {registry_upload.name} (eget register ersätter standardregistret)')
+        else:
+            default_path, label = default_registry_location(registry_config)
+            st.text(f'Förvalt avtalsregister: {label}')
+            if not default_path or not default_path.is_file():
+                st.info('Standardregisterfilen saknas. Ladda upp ett register för att genomföra leverantörsmatchning.')
         registry_date = st.date_input('Registerutdragets datum',
-            value=snapshot_date(load_matching_settings()['registry_snapshot_date']),
+            value=snapshot_date(registry_config['registry_snapshot_date']) if registry_config.get('registry_snapshot_date') else None,
             on_change=clear_result,
             help='Används för att varna när transaktionen är senare än registerutdraget.')
         start = st.button('Starta analys', disabled=upload is None, type='primary')
+        st.button('Ta bort register', on_click=change_registry, args=(False,), disabled=not enabled)
+        st.button('Återställ standardregister', on_click=change_registry, args=(True, True))
     if start:
         clear_result()
         try:
             with st.spinner('Analyserar samtliga rader…'):
                 st.session_state['review'] = analyze_upload(upload.getvalue(),
                     registry_content=registry_upload.getvalue() if registry_upload else None,
-                    registry_snapshot_date=registry_date)
+                    registry_snapshot_date=registry_date,
+                    registry_mode='default' if enabled else 'disabled',
+                    registry_name=registry_upload.name if registry_upload else None,
+                    source_name=upload.name)
         except Exception:
             st.error('Analysen kunde inte slutföras. Kontrollera att filen är en giltig Excel-fil '
                      'och att projektets inställningar är korrekta.')

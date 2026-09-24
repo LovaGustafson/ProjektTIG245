@@ -19,6 +19,8 @@ def main(argv=None):
     parser.add_argument('--settings', type=Path, default=DEFAULT_SETTINGS_PATH)
     parser.add_argument('--sheet', default=0, help='Worksheet name (default: first worksheet)')
     parser.add_argument('--supplier-register', type=Path)
+    parser.add_argument('--no-default-registry', action='store_true',
+                        help='Disable the configured default register')
     parser.add_argument('--registry-snapshot-date', help='Koncerninköp snapshot date, YYYY-MM-DD')
     parser.add_argument('--attestation-register', type=Path)
     args = parser.parse_args(argv)
@@ -27,6 +29,7 @@ def main(argv=None):
         result = run_pipeline(args.input, output_dir=args.output_dir,
                               settings_path=args.settings, sheet_name=args.sheet,
                               supplier_register=args.supplier_register,
+                              use_default_registry=not args.no_default_registry,
                               registry_snapshot_date=args.registry_snapshot_date,
                               attestation_register=args.attestation_register)
     except Exception as exc:

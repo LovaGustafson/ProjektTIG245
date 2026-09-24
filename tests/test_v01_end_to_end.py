@@ -78,6 +78,7 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
         'samlad_kontrollfil.xlsx': 'Samlad kontrollfil',
         'flagged_invoices.xlsx': 'Hämta avvikelserapport',
         'manual_sample.xlsx': 'Hämta manuellt stickprov',
+        'uncertain_suppliers.xlsx': 'Hämta osäkra leverantörsträffar',
     }
     for index, filename in enumerate(download_labels):
         assert app.download_button[index].label == download_labels[filename]
@@ -97,6 +98,6 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert len(app.download_button) == 5
+    assert len(app.download_button) == 6
     assert source.read_bytes() == content
     assert source.stat().st_mtime_ns == mtime

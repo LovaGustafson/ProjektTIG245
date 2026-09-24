@@ -59,6 +59,12 @@ required_fields: null
 # Implemented in src/sampling/manual_sample.py; evidence/documentation remains Q2.
 manual_sample_interval: 20
 
+# Confirmed in the feature-package request, 2026-09-24. Exact supplier expressions.
+excluded_internal_suppliers:
+  - "Försörjningsförvaltning"
+  - "Fastighetstöd"
+  - "mall"
+
 # TODO / awaiting business confirmation:
 # - Meanings of Mm, Pg, Sign, Att, Ksansv and Bild.
 # - Internal supplier ID -> organization number; counterparty is metadata only.
@@ -67,6 +73,13 @@ manual_sample_interval: 20
 
 # Name matching is a prototype identity suggestion, never contract compliance.
 supplier_matching:
+  # Local reference data is ignored by Git. Paths are relative to the project root.
+  default_registry_path: "data/reference/koncerninkop.xlsx"
+  default_registry_name: null
+  # Unconfirmed boundary/extension rules remain NOT_CHECKED (OPEN_QUESTIONS Q12).
+  contract_period:
+    end_date_field: null
+    inclusive_boundaries: null
   registry_snapshot_date: "2026-08-31"
   # Technical safeguards, pending evaluation against the actual register.
   fuzzy_strong_threshold: 0.94
@@ -86,6 +99,7 @@ supplier_matching:
     reference_number: ["Referensnummer", "referensnummer", "reference_number"]
     start_date: ["Startdatum", "startdatum", "start_date"]
     end_date: ["Slutdatum", "slutdatum", "end_date"]
+    final_end_date: ["Sista slutdatum", "Sista Slutdatum", "sista slutdatum", "final_end_date"]
     contract_id: ["Avtals-ID", "AvtalsID", "avtals-ID", "contract_id"]
     contract_category: ["Avtalskategori", "avtalskategori", "contract_category"]
     level_1: ["Nivå1", "Nivå 1", "level_1"]

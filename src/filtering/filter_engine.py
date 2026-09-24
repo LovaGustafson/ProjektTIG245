@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 from src.filtering.transaction_rows import non_transaction_reason
+from src.filtering.internal_suppliers import internal_supplier_rule
 
 DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[2] / 'config/settings.yaml'
 
@@ -18,6 +19,7 @@ class FilterResult:
     account_count: int
     verification_type_count: int
     rule_details: dict[str, dict[str, list[int]]]
+    internal_supplier_count: int = 0
 
 
 def normalize_type(value):
@@ -41,8 +43,8 @@ def load_exclusions(settings_path=DEFAULT_SETTINGS_PATH):
     if not isinstance(settings, dict):
         raise ValueError('Settings must be a mapping')
     result = {}
-    for key in ('excluded_accounts', 'excluded_verification_types'):
-        values = settings.get(key)
+    for key in ('excluded_accounts', 'excluded_verification_types', 'excluded_internal_suppliers'):
+        values = settings.get(key, [] if key == 'excluded_internal_suppliers' else None)
         if values is not None and (not isinstance(values, list) or
                                   any(not isinstance(v, str) for v in values)):
             raise ValueError(f'{key} must be a list of strings or null')
@@ -86,12 +88,25 @@ def filter_rows(data: pd.DataFrame, *, settings_path=DEFAULT_SETTINGS_PATH,
                     count += 1
         counts.append(count)
         details[field] = matches
+    internal_names = settings['excluded_internal_suppliers'] or []
+    details['internal_supplier'] = {name: [] for name in internal_names}
+    details['structural_row'] = {}
+    internal_count = 0
+    if internal_names and list(data.columns).count('header_text') != 1:
+        todos.append('Huvudtext saknas eller är tvetydig; interna leverantörer kunde inte kontrolleras.')
     for position, (_, row) in enumerate(data.iterrows()):
+        if list(data.columns).count('header_text') == 1:
+            internal = internal_supplier_rule(row['header_text'], internal_names)
+            if internal:
+                reasons[position].append(f'Intern leverantör: {internal}')
+                details['internal_supplier'][internal].append(position)
+                internal_count += 1
         structural_reason = non_transaction_reason(row)
         if structural_reason:
             reasons[position].append(structural_reason)
+            details['structural_row'].setdefault(structural_reason, []).append(position)
     mask = [bool(reason) for reason in reasons]
     return FilterResult(data.iloc[[i for i, hit in enumerate(mask) if not hit]].copy(deep=True),
                         data.iloc[[i for i, hit in enumerate(mask) if hit]].copy(deep=True),
                         tuple(todos), tuple('Exkluderad – ' + '; '.join(r) if r else '' for r in reasons),
-                        *counts, details)
+                        *counts, details, internal_count)

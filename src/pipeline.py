@@ -1,6 +1,7 @@
 """Orchestrate existing modules; retain intermediate data and all check results."""
 from dataclasses import dataclass, fields
 from pathlib import Path
+from hashlib import sha256
 
 import pandas as pd
 
@@ -14,12 +15,14 @@ from src.verification.verification_builder import build_verifications
 from src.detection.detection_engine import run_detection, DetectionResult
 from src.models.result import CheckStatus
 from src.models.verification import Verification
-from src.sampling.manual_sample import create_manual_sample
+from src.sampling.manual_sample import create_manual_sample, load_sample_interval
 from src.output.report_generator import generate_reports
 from src.presentation import summary_counts
-from src.ingestion.contract_reader import read_contract_registry
+from src.ingestion.registry_source import resolve_registry_source, load_contract_source, RegistrySource
 from src.supplier_matching.analysis import SupplierAnalysis, analyze_suppliers
-from src.supplier_matching.settings import load_matching_settings, MatchSettings, snapshot_date
+from src.supplier_matching.settings import load_matching_settings, MatchSettings
+from src.supplier_matching.contract_period import ContractDatePolicy
+from src.run_summary import RunSummary, summarize_run
 
 
 @dataclass
@@ -35,13 +38,18 @@ class PipelineResult:
     report_paths: dict[str, Path]
     todos: tuple[str, ...]
     supplier_analysis: SupplierAnalysis | None = None
+    summary: RunSummary | None = None
+    source_context: dict | None = None
+    sampling_evidence: pd.DataFrame | None = None
+    registry_source: RegistrySource | None = None
 
 
 def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                  sheet_name=0, date_format=None, image_references=None,
                  supplier_register=None, attestation_register=None,
                  rule_options=None, rules=None, excluded_verification_types=None,
-                 registry_snapshot_date=None) -> PipelineResult:
+                 registry_snapshot_date=None, registry_source=None,
+                 use_default_registry=True, source_name=None) -> PipelineResult:
     """Run analysis of every grouped verification before selecting the sample.
 
     Validation metadata refers to standardized_data positions before filtering.
@@ -55,8 +63,9 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     register format conventions. Unconfirmed rules retain engine defaults;
     required_fields in YAML does not imply confirmation of business scope.
     All detection results and validation errors are retained in PipelineResult;
-    the report generator exports its three workbooks, with supplier identity
-    evidence on separate sheets when a register is supplied. Name matching is
+    the report generator exports review, flagged, sample, uncertain-supplier and
+    excluded workbooks with source/run evidence. Supplier identity and contract
+    periods have separate sheets when a register is usable. Name matching is
     row-level and runs on cleaned rows even if they cannot form a verification.
     TODO: a persistent report format for all validation/nonflagged checks.
     """
@@ -69,15 +78,16 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     unusable = {row.row_position for row in validation.rows
                 if any(error.field == 'verification_id' for error in row.validation_errors)}
     cleaned = filtering.cleaned_data
-    supplier_analysis = None
-    if supplier_register is not None:
-        config = load_matching_settings(settings_path)
-        configured_date = registry_snapshot_date or config.get('registry_snapshot_date')
-        snapshot = snapshot_date(configured_date) if configured_date is not None else None
-        registry = read_contract_registry(supplier_register, config=config, snapshot=snapshot)
-        matching = MatchSettings(**{f.name: config[f.name] for f in fields(MatchSettings)
-                                   if f.name in config})
-        supplier_analysis = analyze_suppliers(cleaned, registry, settings=matching, date_format=date_format)
+    config = load_matching_settings(settings_path)
+    registry_source = registry_source or resolve_registry_source(
+        settings_path=settings_path, path=supplier_register,
+        mode='default' if use_default_registry or supplier_register is not None else 'disabled',
+        registry_snapshot_date=registry_snapshot_date)
+    registry = load_contract_source(registry_source, config=config)
+    matching = MatchSettings(**{f.name: config[f.name] for f in fields(MatchSettings) if f.name in config})
+    contract_policy = ContractDatePolicy(**(config.get('contract_period') or {}))
+    supplier_analysis = analyze_suppliers(cleaned, registry, settings=matching, date_format=date_format,
+                                         contract_policy=contract_policy)
     eligible = cleaned.loc[~cleaned.index.isin(unusable)]
     ungrouped = cleaned.loc[cleaned.index.isin(unusable)].copy(deep=True)
     if list(eligible.columns).count('verification_id') == 1:
@@ -97,14 +107,29 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                              attestation_reference=attestation,
                              rule_options=rule_options, rules=rules)
                for v, evidence in zip(verifications, images)]
-    sample = create_manual_sample(verifications, settings_path=settings_path)
+    interval = load_sample_interval(settings_path)
+    sample = create_manual_sample(verifications, interval=interval)
+    run_summary = summarize_run(original, filtering, ungrouped, verifications, results,
+                                sample, supplier_analysis, interval)
+    source_context = {'source_name': source_name or Path(input_path).name,
+                      'source_sha256': sha256(Path(input_path).read_bytes()).hexdigest(),
+                      'source_sheet': original.attrs.get('source_sheet'),
+                      'source_header_row': original.attrs.get('source_header_row')}
+    sampling_evidence = pd.DataFrame([
+        {'population_position': position, 'verification_id': v.verification_id,
+         'source_row_position': source_position}
+        for position, v in enumerate(verifications, 1) if position % interval == 0
+        for source_position in v.rows.index
+    ], columns=['population_position', 'verification_id', 'source_row_position'])
     flagged = [v for v, result in zip(verifications, results) if result.flag_reasons]
     checks = [check for result in results for check in result.checks
               if check.status == CheckStatus.FLAGGED]
     paths = generate_reports(cleaned, flagged_verifications=flagged,
                              flagged_checks=checks, manual_sample=sample, output_dir=output_dir,
                              summary=summary_counts(standardized, validation, results),
-                             supplier_analysis=supplier_analysis)
+                             supplier_analysis=supplier_analysis, run_summary=run_summary,
+                             source_context=source_context, sampling_evidence=sampling_evidence,
+                             original_data=original, filtering=filtering)
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',
@@ -112,4 +137,5 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     if supplier_analysis is not None:
         todos += supplier_analysis.registry.issues
     return PipelineResult(original, standardized, validation, filtering, ungrouped,
-                          verifications, results, sample, paths, todos, supplier_analysis)
+                          verifications, results, sample, paths, todos, supplier_analysis,
+                          run_summary, source_context, sampling_evidence, registry_source)

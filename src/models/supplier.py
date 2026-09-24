@@ -49,3 +49,6 @@ class ContractRegistry:
     available: bool = False
     issues: tuple[str, ...] = ()
     snapshot_date: date | None = None
+    source_name: str | None = None
+    source_kind: str | None = None
+    source_sha256: str | None = None

@@ -13,9 +13,19 @@ from src.models.verification import Verification
 DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "config/settings.yaml"
 
 
+def load_sample_interval(settings_path=DEFAULT_SETTINGS_PATH):
+    with Path(settings_path).open(encoding="utf-8") as settings_file:
+        settings = yaml.safe_load(settings_file)
+    interval = settings.get("manual_sample_interval") if isinstance(settings, Mapping) else None
+    if type(interval) is not int or interval <= 0:
+        raise ValueError("manual_sample_interval must be a positive integer")
+    return interval
+
+
 def create_manual_sample(
     analyzed_verifications: Iterable[Verification], *,
     settings_path: str | Path = DEFAULT_SETTINGS_PATH,
+    interval: int | None = None,
 ) -> list[Verification]:
     """Return copies at positions interval, 2*interval, ... in supplied order.
 
@@ -35,9 +45,7 @@ def create_manual_sample(
     evidence/documentation remain open (OPEN_QUESTIONS.md Q2); the interval is
     not an unresolved decision.
     """
-    with Path(settings_path).open(encoding="utf-8") as settings_file:
-        settings = yaml.safe_load(settings_file)
-    interval = settings.get("manual_sample_interval") if isinstance(settings, Mapping) else None
+    interval = load_sample_interval(settings_path) if interval is None else interval
     if type(interval) is not int or interval <= 0:
         raise ValueError("manual_sample_interval must be a positive integer")
 
