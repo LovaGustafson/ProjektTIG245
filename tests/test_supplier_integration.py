@@ -75,11 +75,12 @@ def test_complete_pipeline_preserves_both_original_files_and_filters_before_matc
     assert any('Avtalstrohet har inte kontrollerats' in check.reason for check in checks)
 
 
-def test_export_has_raw_columns_matching_candidates_all_contracts_and_literal_formulas():
+def test_export_has_clean_header_matching_candidates_all_contracts_and_literal_formulas():
     review = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()))
     with pd.ExcelFile(BytesIO(review.downloads['samlad_kontrollfil.xlsx'])) as book:
         kept = pd.read_excel(book, sheet_name='Granskning', dtype=object)
-        assert kept['Huvudtext'].iloc[0] == invoices()['Huvudtext'].iloc[0]
+        assert kept['Huvudtext'].iloc[0] == 'Telia Sverige A'
+        assert review.result.original_data['Huvudtext'].iloc[0] == invoices()['Huvudtext'].iloc[0]
         assert kept['Motp'].tolist() == [100] * 6
         assert kept['supplier_match_status'].iloc[0] == 'STRONG_MATCH'
         assert kept['matched_organization_number'].iloc[0] == '0123456789'

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.presentation import context_fields, check_message
+from src.presentation import context_fields, check_message, customer_facing_rows
 from src.models.result import CheckResult
 from src.models.verification import Verification
 from src.supplier_matching.analysis import enrich_rows
@@ -104,7 +104,8 @@ def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
     prepared = {}
     for name, data in sheets.items():
         # Keep decimal precision instead of pandas' float conversion.
-        export_data = data.map(lambda value: str(value) if isinstance(value, Decimal) else value)
+        export_data = customer_facing_rows(data).map(
+            lambda value: str(value) if isinstance(value, Decimal) else value)
         for value in chain(export_data.columns, export_data.to_numpy().flat):
             if isinstance(value, str) and len(value) > 32767:
                 raise ValueError(f"Worksheet {name}: text exceeds Excel's 32767-character cell limit")
@@ -155,8 +156,9 @@ def generate_reports(
 
     Excel-native scalar values are supported; Decimal values are explicitly
     stored as exact text, and pandas serializes nested Python objects as text.
-    Strings, including formula expressions, are
-    exported literally. Excel cannot preserve arbitrary Python types/dtypes.
+    Numbered Slutk markers are removed from header/supplier text on an export
+    copy. Other strings, including formula expressions, are exported literally.
+    Excel cannot preserve arbitrary Python types/dtypes.
 
     Workbooks are serialized before any destination is created. Exclusive
     creation refuses every existing path, including symlinks, so source files

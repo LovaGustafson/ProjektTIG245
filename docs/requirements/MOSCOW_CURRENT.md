@@ -21,6 +21,12 @@ The feature-package request of 2026-09-24 confirms the following work within M2/
 
 These confirmations do not reopen duplicate removal or authorize autonomous controls, Proceedo integration or other Won't Have functionality.
 
+The 2026-09-29 presentation clarification confirms that numbered `Slutk` markers
+must also be removed from customer-facing Huvudtext and extracted-supplier text
+in UI tables/details and Excel reports. Original values remain available
+internally for M6 traceability. `Prelb`, standalone markers, `Slutkund AB` and
+invalid strings such as `Slutk123abc` retain their existing meaning and text.
+
 ---
 
 # Must Have

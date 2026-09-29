@@ -63,6 +63,8 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     assert not app.exception
     assert ids[0] in [t.value for t in app.text]
     expected_text = original.loc[original.Vernr == ids[0], 'Huvudtext'].iloc[0]
+    if key == 'AMBIGUOUS_MATCH':
+        expected_text = 'Nordmöbler'
     assert expected_text in [t.value for t in app.text]
     assert any('Registerdatumvarning' in str(b.proto) for b in app.get('markdown'))
     if key == 'AMBIGUOUS_MATCH':
