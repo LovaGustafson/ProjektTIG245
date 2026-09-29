@@ -16,6 +16,10 @@ from src.output.report_generator import review_tables
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def kpi_detail(app):
+    return next(c for c in app.get('flex_container') if c.key == 'kpi_detail')
+
+
 def source(date_header='VerDat'):
     book = Workbook()
     sheet = book.active
@@ -108,12 +112,12 @@ def test_dashboard_full_labels_transparency_and_selected_detail():
     for rule in ['white-space: normal', 'text-overflow: clip', 'overflow-wrap: anywhere']:
         assert rule in css
     app.button(key='kpi_account').click().run()
-    account = app
+    account = kpi_detail(app)
     # The opened KPI panel precedes the tab tables.
     assert account.dataframe[0].value['Antal rader'].tolist() == [1, 1]
     assert account.dataframe[1].value['Konto'].tolist() == ['7698', '7699 ']
     app.button(key='kpi_verification_type').click().run()
-    types = app
+    types = kpi_detail(app)
     assert types.dataframe[1].value['Vertyp'].tolist() == ['KR01', 'KR01']
     table = app.tabs[0].dataframe[0]
     # AppTest has no public dataframe click helper; send the actual widget event.
@@ -192,7 +196,7 @@ def test_every_kpi_click_opens_correct_source_rows(key, title, positions):
     assert not app.exception
     assert app.session_state['selected_kpi'] == key
     assert title in [heading.value for heading in app.subheader]
-    row_table = app.dataframe[1 if key in ('account', 'verification_type') else 0].value
+    row_table = kpi_detail(app).dataframe[1 if key in ('account', 'verification_type') else 0].value
     # Streamlit's Arrow round trip infers pandas dtypes; compare displayed values.
     actual = row_table.iloc[:, :len(original.columns)].astype(object)
     expected = display_dataframe(original.iloc[positions]).astype(object)
@@ -202,14 +206,14 @@ def test_every_kpi_click_opens_correct_source_rows(key, title, positions):
     if key == 'total':
         assert any('Metadata-rader' in m.value and 'räknas inte' in m.value for m in app.markdown)
     elif key == 'review':
-        assert app.dataframe[0].key == 'kpi_review_rows'
+        assert kpi_detail(app).dataframe[0].key == 'kpi_review_rows'
         assert any('inte automatiskt' in message.value for message in app.info)
     elif key == 'account':
-        assert app.dataframe[0].value.to_dict('list') == {
+        assert kpi_detail(app).dataframe[0].value.to_dict('list') == {
             'Konto': ['7698', '7699'], 'Antal rader': [1, 1]}
     elif key == 'verification_type':
         from src.filtering.filter_engine import load_exclusions
-        counts = app.dataframe[0].value.set_index('Vertyp')['Antal rader']
+        counts = kpi_detail(app).dataframe[0].value.set_index('Vertyp')['Antal rader']
         assert set(counts.index) == set(load_exclusions()['excluded_verification_types'])
         assert counts['KR01'] == 2
         assert counts.sum() == 2
@@ -229,7 +233,7 @@ def test_kpi_review_selection_and_filter_changes_use_current_rows():
     app.button(key='kpi_review').click().run()
     states = WidgetStates()
     state = states.widgets.add()
-    state.id = app.dataframe[0].proto.id
+    state.id = kpi_detail(app).dataframe[0].proto.id
     state.string_value = json.dumps({'selection': {'rows': [0], 'columns': [], 'cells': []}})
     app._run(states)
     assert not app.exception
@@ -237,11 +241,11 @@ def test_kpi_review_selection_and_filter_changes_use_current_rows():
     assert any('Utfall' in warning.value for warning in app.warning)
     app.multiselect(key='excluded_types').select('X').run()
     assert not app.exception
-    assert app.dataframe[0].value.empty
+    assert kpi_detail(app).dataframe[0].value.empty
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)
     app.button(key='kpi_verification_type').click().run()
-    assert app.dataframe[0].value.set_index('Vertyp').loc['X', 'Antal rader'] == 3
-    assert len(app.dataframe[1].value) == 5
+    assert kpi_detail(app).dataframe[0].value.set_index('Vertyp').loc['X', 'Antal rader'] == 3
+    assert len(kpi_detail(app).dataframe[1].value) == 5
     # New upload also clears the open detail panel and selection.
     app.file_uploader[0].set_value(('new.xlsx', source(),
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).run()

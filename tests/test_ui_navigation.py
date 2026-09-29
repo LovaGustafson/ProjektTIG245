@@ -103,13 +103,13 @@ def test_home_clears_drilldown_and_temporary_filters_but_preserves_base_rules():
     position = columns.index('Vernr')
     app.multiselect(key='vf:kpi_review_rows:columns').set_value([position]).run()
     app.text_input(key=f'vf:kpi_review_rows:c{position}:text').set_value('absent').run()
-    assert len(app.dataframe[0].value) == 1
+    assert len(next(table for table in app.dataframe if table.key == 'kpi_review_rows').value) == 1
     assert app.button(key='vf:kpi_review_rows:clear_visible').label == 'Rensa vyfilter'
     app.button(key='home').click().run()
     assert not app.exception
     assert 'selected_kpi' not in app.session_state
     assert app.multiselect(key='excluded_types').value == base_rules
     app.button(key='kpi_review').click().run()
-    assert len(app.dataframe[0].value) == 4
+    assert len(next(table for table in app.dataframe if table.key == 'kpi_review_rows').value) == 4
     app.button(key='clear_drilldown_dashboard').click().run()
     assert 'selected_kpi' not in app.session_state

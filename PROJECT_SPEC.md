@@ -2,7 +2,7 @@
 
 ## TIG245 — Current Technical Specification
 
-Last updated: 2026-09-24
+Last updated: 2026-09-29
 
 ---
 
@@ -282,6 +282,10 @@ Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsövers
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 
 The visual overview in `src/ui_run_summary.py` precedes the detail views. It presents compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, individual detection statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, control, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. `NOT_CHECKED`, `ERROR`, `FLAGGED` and `PASS` remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, control explanations and exports remain available under Details and review. Temporary view filters do not change dashboard counts or the sample.
+
+The 2026-09-29 transparency update adds initially collapsed category expanders beneath these summaries, including the entire exclusion-reasons section. `src/ui_overview_details.py` builds read-only detail tables from existing results: exact backend reasons and counts at the corresponding unit, detection check type/field/status, supplier candidates, contract dates/status/reasons, verification groups and source rows with occurrence/Excel-row linkage. Detection row positions are resolved through the corresponding verification's retained indexes; results without a row position show group context, without inferring linkage from Vernr/Vrad. Unusable positions remain explicit without an invented row link. Source values and existing numbered-Slutk presentation behavior remain unchanged.
+
+The overview explains the audited units: the sample population is `len(verifications)` after routing unusable IDs and grouping; strong supplier hits count retained rows with `STRONG_MATCH`, including any ungrouped rows. These are intentionally different units, not alternative counts of the same population. Contract counts remain comparisons: a row without a candidate has no contract comparison and is explained under supplier matching, not given a fabricated `NOT_CHECKED` contract result. `NOT_CHECKED` contract comparisons remain separate from dates actually outside a period and do not imply missing or invalid contracts. No filtering, matching, date policy, detection, grouping, sampling, summary calculation or export behavior changes in this update.
 
 Apart from the header/supplier presentation rule above, strings, including formula expressions, are exported literally. Decimal values are written as exact text; Excel styling and arbitrary Python types are not preserved. Unsupported values or cell-size limits can stop export without changing the source.
 

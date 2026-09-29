@@ -5,6 +5,11 @@ import streamlit as st
 from src.models.result import CheckStatus
 from src.models.supplier import SupplierMatchStatus
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION
+from src.ui_support import display_dataframe
+from src.ui_overview_details import (
+    source_rows, reason_counts, detection_details, supplier_details,
+    contract_details, exclusion_details, verification_details,
+)
 
 
 SUPPLIER_LABELS = {
@@ -26,6 +31,133 @@ EXCLUSION_LABELS = {
     'internal_supplier': 'Intern leverantör', 'structural_row': 'Strukturell rad',
 }
 STATUS_COLORS = ['#126b78', '#b66a12', '#b33d4b', '#788494']
+CHECK_EXPLANATIONS = {
+    'PASS': 'Den implementerade kontrollen passerade inom sin konfigurerade omfattning. '
+            'Det är inte ett godkännande av hela verifikationen eller köpet.',
+    'FLAGGED': 'Kontrollen rapporterade ett fynd. Den registrerade orsaken visas nedan; '
+               'flaggan är inte ett automatiskt beslut om verifikationen.',
+    'ERROR': 'Kontrollen kunde inte slutföras tillförlitligt. Det tekniska felet är inte '
+             'i sig en konstaterad affärsavvikelse.',
+    'NOT_CHECKED': 'Kontrollen har inte bedömts. Ej kontrollerad är inte PASS eller godkänt. '
+                   'Nedan visas endast de orsaker som registrerades i denna körning.',
+}
+CONTRACT_EXPLANATIONS = {
+    'PASS': 'Verifikationsdatum ligger inom den jämförda registerpostens avtalsperiod. '
+            'Vilket avtal köpet omfattas av har inte kontrollerats.',
+    'FLAGGED': 'Datumjämförelsen visar att verifikationsdatum ligger före eller efter '
+               'den jämförda avtalsperioden. Backend-resultatet anger vilket.',
+    'ERROR': 'Avtalsjämförelsen kunde inte slutföras tillförlitligt. Se registrerad orsak.',
+    'NOT_CHECKED': 'Underlaget eller de bekräftade datumreglerna räcker inte för att bedöma '
+                   'denna avtalsperiod. Det betyder inte att avtal saknas eller är ogiltigt. '
+                   'Det är separat från att datumet faktiskt ligger utanför perioden.',
+}
+SUPPLIER_EXPLANATIONS = {
+    'STRONG_MATCH': 'Matchningsmotorn har identifierat en stark leverantörsträff i det använda registret. '
+                    'Antalet avser kvarvarande källrader, inte unika leverantörer eller verifikationer. '
+                    'Träffen fastställer inte avtalsefterlevnad.',
+    'AMBIGUOUS_MATCH': 'Leverantörsidentiteten är osäker och behöver granskas manuellt. '
+                       'Ingen leverantör har valts automatiskt. Matchningsmotorns orsaker och '
+                       'eventuella kandidater visas nedan.',
+    'NO_MATCH': 'Matchningsmotorn hittade ingen träff i det använda registret. '
+                'Det fastställer inte att leverantören saknar avtal.',
+    'SUPPLIER_NOT_IDENTIFIED': 'Leverantören kunde inte identifieras från Huvudtext enligt '
+                               'de befintliga extraktionsreglerna. Se motorns faktiska orsak nedan.',
+}
+DETAIL_COLUMNS = {
+    'source_row_position': 'Källposition (från 0)',
+    'source_row_positions': 'Källpositioner (från 0)',
+    'source_excel_row': 'Rad i Excel', 'source_sheet': 'Kalkylblad',
+    'source_link': 'Källkoppling', 'exclusion_reason': 'Exkluderingsorsak',
+    'population_position': 'Position i urvalspopulationen', 'row_count': 'Antal källrader',
+    'verification_id': 'Verifikation', 'verification_line_id': 'Verifikationsrad',
+    'row_position': 'row_position (inom verifikationen, från 0)',
+    'check_type': 'Kontroll (check_type)', 'field': 'Fält (field)',
+    'reason': 'Orsak (reason)', 'status': 'Status (status)',
+    'supplier_match_reason': 'Matchningsorsak (supplier_match_reason)',
+    'supplier_match_status': 'Matchningsstatus (supplier_match_status)',
+    'supplier_text_raw': 'Leverantör från Huvudtext',
+    'matched_supplier_name': 'Identifierad leverantör', 'supplier_name': 'Leverantör/kandidat',
+    'contract_period_status': 'Status (contract_period_status)',
+    'contract_period_reason': 'Orsak (contract_period_reason)',
+    'contract_period_result': 'Resultat (contract_period_result)',
+    'contract_id': 'Avtals-ID', 'contract_name': 'Avtalsnamn',
+    'verification_date': 'Verifikationsdatum',
+    'start_date': 'Startdatum (original)', 'end_date': 'Slutdatum (original)',
+    'final_end_date': 'Sista slutdatum (original)',
+}
+
+
+def show_evidence(data, title):
+    st.markdown(f'**{title}**')
+    if data.empty:
+        st.caption('Inga poster i denna kategori.')
+    else:
+        st.dataframe(display_dataframe(data), hide_index=True, width='stretch',
+                     column_config=DETAIL_COLUMNS)
+
+
+def show_source_rows(rows):
+    st.caption('Källposition identifierar raden i den inlästa tabellen (från 0). '
+               'Excel-rad och kalkylblad visas när de finns. Huvudtext visas med '
+               'befintlig visningsrensning av numrerade Slutk-markörer; källvärdena bevaras internt.')
+    show_evidence(rows, 'Underliggande källrader')
+
+
+def show_detection_drilldowns(result, counts):
+    st.caption('En detektionskontroll är ett resultat från en körd kontrollregel för en '
+               'verifikation eller dess rader. Antalen räknar enskilda kontrollresultat. '
+               'Öppna en status för förklaring, registrerade orsaker och källrader.')
+    for row in counts.itertuples(index=False):
+        with st.expander(f'{row.Kategori} ({row.Status}) · {row.Antal} kontrollresultat', expanded=False):
+            st.write(CHECK_EXPLANATIONS[row.Status])
+            checks, rows = detection_details(result, row.Status)
+            show_evidence(reason_counts(checks, ['check_type', 'field', 'reason']),
+                          'Registrerade orsaker · antal kontrollresultat')
+            show_evidence(checks, 'Faktiska kontrollresultat')
+            st.caption('Utan en radposition visas verifikationens rader som kontext. '
+                       'En angiven radposition räknas inom verifikationen och kopplas till '
+                       'dess bevarade källposition. Samma källrad kan beröras av flera kontroller.')
+            show_source_rows(rows)
+
+
+def show_supplier_drilldowns(result, counts):
+    for row in counts.itertuples(index=False):
+        with st.expander(f'{row.Kategori} · {row.Antal} rader', expanded=False):
+            st.write(SUPPLIER_EXPLANATIONS[row.Status])
+            matches, candidates, contracts, rows = supplier_details(result, row.Status)
+            show_evidence(reason_counts(matches, ['supplier_match_reason']), 'Registrerade orsaker · antal rader')
+            show_evidence(matches, 'Matchningsresultat per källrad')
+            show_source_rows(rows)
+            st.caption('Kandidater och avtal hör till samma källposition som matchningsresultatet. '
+                       'Flera kandidater eller avtal kan finnas per rad. Score är namnlikhet, inte sannolikhet.')
+            show_evidence(candidates, 'Befintliga leverantörskandidater och matchningsorsaker')
+            with st.expander('Befintlig avtalsinformation', expanded=False):
+                show_evidence(contracts, 'Möjliga registeravtal · inget avtal har valts för köpet')
+
+
+def show_contract_drilldowns(result, counts):
+    analysis = result.supplier_analysis
+    if analysis is None or not analysis.registry.available:
+        st.caption('Avtalsevidens saknas när leverantörsmatchningen är otillgänglig.')
+        return
+    for row in counts.itertuples(index=False):
+        with st.expander(f'{row.Kategori} · {row.Antal} avtalsjämförelser', expanded=False):
+            st.write(CONTRACT_EXPLANATIONS[row.Status])
+            contracts, rows = contract_details(result, row.Status)
+            show_evidence(reason_counts(contracts, ['contract_period_reason']),
+                          'Registrerade orsaker · antal avtalsjämförelser')
+            show_evidence(contracts, 'Faktiska avtalsjämförelser med leverantör, datum och status')
+            show_source_rows(rows)
+    st.caption('För rader utan någon leverantörskandidat finns ingen avtalsjämförelse i backend. '
+               'De räknas inte i denna fördelning; deras evidens finns under Leverantörsmatchning.')
+
+
+def show_verification_drilldown(result, key, label, count, explanation):
+    with st.expander(f'{label} · {count} verifikationer', expanded=False):
+        st.write(explanation)
+        groups, rows = verification_details(result, key)
+        show_evidence(groups, 'Verifikationer och deras källpositioner')
+        show_source_rows(rows)
 
 
 def _counts_table(counts, labels):
@@ -108,6 +240,7 @@ def show_run_summary(result):
     charts = dashboard_tables(result)
     st.subheader('Analysöversikt')
     st.caption('Hela analyskörningen. Tillfälliga vyfilter ändrar inte dessa antal eller exporterna.')
+    st.caption('Öppna en kategori under diagrammen för förklaring, registrerade orsaker och underliggande poster.')
     with st.container(key='overview_kpis'):
         for column, label, value in zip(st.columns(5),
                 ['Källpopulation · rader', 'Kvarvarande · rader', 'Exkluderade · rader',
@@ -128,42 +261,67 @@ def show_run_summary(result):
                          colors=['#126b78', '#788494'], empty_message='Inga inlästa källrader.')
         st.caption('Avser den inlästa tabellen i första kalkylbladet. '
                    'Fullständighet gentemot Proceedo är inte verifierad.')
+        for label, positions in [
+            ('Källpopulation', result.original_data.index),
+            ('Kvarvarande', result.filtering.cleaned_data.index),
+            ('Exkluderade', result.filtering.excluded_data.index),
+            ('Utan användbart verifikations-ID', result.ungrouped_data.index),
+        ]:
+            with st.expander(f'{label} · {len(positions)} rader', expanded=False):
+                st.write('Befintliga källrader i denna del av körningen. Exkluderade rader '
+                         'visar samtliga registrerade exkluderingsorsaker. Kvarvarande '
+                         'rader är underlag för fortsatt granskning, inte automatiskt godkända.')
+                show_source_rows(source_rows(result, positions))
     with right, st.container(border=True):
         st.markdown('#### Leverantörsmatchning')
         analysis = result.supplier_analysis
         if analysis is None or not analysis.registry.available:
             st.info(f'Matchning ej tillgänglig för {s.supplier_unavailable_rows} kvarvarande rader. '
                     'Register saknas eller är oanvändbart.')
+            with st.expander('Matchning ej tillgänglig – förklaring och rader', expanded=False):
+                st.write('Ingen matchningsstatus har kunnat fastställas för dessa rader. '
+                         'Otillgänglig matchning är inte samma sak som ingen träff i registret.')
+                if analysis is not None:
+                    for issue in analysis.registry.issues:
+                        st.text(issue)
+                show_source_rows(source_rows(result, result.filtering.cleaned_data.index))
         else:
             show_count_chart(charts['suppliers'], unit='Kvarvarande rader', key='chart_suppliers',
                              colors=['#126b78', '#b66a12', '#b33d4b', '#788494'],
                              empty_message='Inga kvarvarande rader att matcha.')
+            show_supplier_drilldowns(result, charts['suppliers'])
         st.caption(f'{s.uncertain_supplier_rows} rader utan säker leverantörsträff. '
-                   'Leverantörsidentitet är separat från avtalsefterlevnad. Detaljer finns under Granskning.')
+                   'Leverantörsidentitet är separat från avtalsefterlevnad. Öppna kategorierna ovan för evidens.')
 
-    with st.container(border=True):
-        st.markdown('#### Varför exkluderades rader?')
+    with st.expander('Varför exkluderades rader?', expanded=False):
         st.caption('Faktiska regelträffar. En rad kan träffa flera regler; staplarna ska inte summeras '
                    'till antal unika exkluderade rader.')
         show_count_chart(charts['exclusions'], unit='Regelträffar (rader)', key='chart_exclusions',
                          empty_message='Inga exkluderingsorsaker i denna körning.')
+        for row in charts['exclusions'].itertuples(index=False):
+            with st.expander(f'{row.Kategori} · {row.Antal} regelträffar', expanded=False):
+                show_source_rows(exclusion_details(result, row.Status))
 
     st.subheader('Avvikelser och kontrollstatus')
     st.caption(f'{s.flagged_verifications} flaggade verifikationer med {s.flagged_rows} tillhörande rader. '
                'Ej kontrollerat är varken godkänt eller en konstaterad avvikelse. '
                'Tekniska fel redovisas separat.')
+    show_verification_drilldown(result, 'flagged', 'Flaggade', s.flagged_verifications,
+                               'Verifikationer med minst ett FLAGGED-resultat. '
+                               'De enskilda kontrollernas orsaker visas under Flaggad i Detektionskontroller.')
     left, right = st.columns(2)
     with left, st.container(border=True):
         st.markdown('#### Detektionskontroller')
         show_count_chart(charts['checks'], unit='Kontrollresultat', key='chart_checks',
                          colors=STATUS_COLORS, empty_message='Inga kontrollresultat i denna körning.')
-        st.caption('Flera kontroller kan avse samma verifikation. Orsaker och teknisk validering finns i detaljvyerna.')
+        show_detection_drilldowns(result, charts['checks'])
     with right, st.container(border=True):
         st.markdown('#### Avtalsperioder vid verifikationsdatum')
         show_count_chart(charts['contracts'], unit='Avtalsjämförelser', key='chart_contracts',
                          colors=STATUS_COLORS, empty_message='Inga avtalsjämförelser kunde göras i denna körning.')
         st.caption('Varje möjligt registeravtal jämförs separat med källradens datum. '
                    'Inom perioden betyder inte att köpet omfattas av avtalet.')
+        show_contract_drilldowns(result, charts['contracts'])
 
     with st.container(border=True, key='sample_overview'):
         st.subheader('Manuellt stickprov')
@@ -175,6 +333,31 @@ def show_run_summary(result):
         show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
                          colors=['#126b78', '#b7c4d2'], empty_message='Urvalspopulationen är tom.')
         st.caption(SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
+        with st.expander('Vad betyder urvalspopulation och stark leverantörsträff?', expanded=False):
+            st.write('Urvalspopulationen räknar verifikationer: kvarvarande rader med användbart '
+                     'verifikations-ID grupperas på det normaliserade ID:t. Varje grupp räknas en gång, '
+                     'även om den innehåller flera rader. Valideringsfel i andra fält tar inte i sig '
+                     'bort gruppen ur populationen. Flaggning påverkar inte urvalet.')
+            st.write('Stark leverantörsträff räknar kvarvarande källrader med backend-status STRONG_MATCH. '
+                     'Matchningsmotorn har då en enda tillräckligt säker leverantörskandidat med '
+                     'organisationsnummer. Det är varken ett antal unika leverantörer eller ett '
+                     'godkännande av köpets avtalsefterlevnad.')
+            st.write('Siffrorna kan därför skilja sig: en verifikation kan innehålla flera matchade rader, '
+                     'vissa rader får andra matchningsstatusar och även rader utan användbart '
+                     'verifikations-ID kan leverantörsmatchas när registret är tillgängligt.')
+            st.text(f'Denna körning: {s.eligible_verifications} verifikationer i urvalspopulationen, '
+                    f'{s.strong_supplier_rows} rader med stark leverantörsträff och '
+                    f'{s.ungrouped_rows} kvarvarande rader utan användbart verifikations-ID.')
+            if s.supplier_unavailable_rows:
+                st.caption(f'Matchningen är otillgänglig för {s.supplier_unavailable_rows} rader; '
+                           'dessa har ingen fastställd matchningsstatus.')
+        show_verification_drilldown(result, 'all', 'Hela urvalspopulationen', s.eligible_verifications,
+                                   SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
+        for row in charts['sample'].itertuples(index=False):
+            show_verification_drilldown(result, row.Status, row.Kategori, row.Antal,
+                                       f'Det befintliga stickprovet väljer var {s.sample_interval}:e '
+                                       'verifikation i populationens ordning, oberoende av flaggning. '
+                                       'Övriga grupper tillhör populationen men valdes inte till stickprovet.')
         st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas. '
                    'Se urvalet under Manuell kontroll och hämta underlaget under Export.')
         if s.ungrouped_rows:
