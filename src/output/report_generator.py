@@ -14,6 +14,8 @@ from src.presentation import context_fields, check_message
 from src.models.result import CheckResult
 from src.models.verification import Verification
 from src.supplier_matching.analysis import enrich_rows
+from src.supplier_matching.extraction import normalize_header_text
+from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -30,6 +32,11 @@ def supplier_sheets(analysis, positions=None):
     if analysis is None:
         return {}
     metadata = {'Registerinformation': pd.DataFrame({
+        'registry_name': analysis.registry.source_name,
+        'registry_source': analysis.registry.source_kind,
+        'registry_sha256': analysis.registry.source_sha256,
+        'registry_sheet': analysis.registry.data.attrs.get('source_sheet'),
+        'registry_header_row': analysis.registry.data.attrs.get('source_header_row'),
         'registry_snapshot_date': analysis.registry.snapshot_date,
         'matching_available': analysis.registry.available,
         'issues': list(analysis.registry.issues) or [''],
@@ -41,6 +48,56 @@ def supplier_sheets(analysis, positions=None):
     return {**metadata, 'Leverantörsmatchning': subset(analysis.rows),
             'Leverantörskandidater': subset(analysis.candidates),
             'Möjliga avtal': subset(analysis.contracts)}
+
+
+def uncertain_supplier_rows(data, analysis):
+    """Retain every non-strong occurrence, including unavailable matching."""
+    available = analysis is not None and analysis.registry.available
+    if available:
+        strong = analysis.rows.loc[analysis.rows['supplier_match_status'] == 'STRONG_MATCH',
+                                   'source_row_position']
+        data = data.loc[~data.index.isin(strong)]
+    result = enrich_rows(data, analysis)
+    if not available:
+        evidence = {'source_row_position': list(data.index),
+                    'header_text_normalized': (data['header_text'].map(normalize_header_text).tolist()
+                                               if list(data.columns).count('header_text') == 1 else None),
+                    'supplier_match_status': None,
+                    'supplier_check_status': 'NOT_CHECKED',
+                    'supplier_match_reason': '; '.join(analysis.registry.issues) if analysis else 'Register saknas.'}
+        for field, values in evidence.items():
+            while field in result.columns:
+                field = '_' + field
+            result[field] = values
+    return result
+
+
+def audit_sheets(data, *, source_context=None, run_summary=None, sampling_evidence=None, table_name='rows'):
+    sheets = {}
+    if source_context is not None:
+        header = source_context.get('source_header_row')
+        sheets['Källspårning'] = pd.DataFrame({
+            'export_sheet': [table_name] * len(data),
+            'export_row': list(range(2, len(data) + 2)),
+            'source_row_position': list(data.index),
+            'source_excel_row': [header + 1 + int(p) if header is not None else None for p in data.index],
+            **{key: [value] * len(data) for key, value in source_context.items()},
+        })
+        sheets['Källinformation'] = pd.DataFrame([source_context])
+    if run_summary is not None:
+        sheets['Körningsöversikt'] = pd.DataFrame(list(run_summary.counts().items()), columns=['Mått', 'Antal'])
+        sheets['Exkluderingsregler'] = pd.DataFrame(list(run_summary.exclusion_counts.items()),
+                                                columns=['Regel', 'Antal träffade källrader'])
+        sheets['Urvalsmetod'] = pd.DataFrame([{
+            'Population': SAMPLE_POPULATION, 'Ordning': SAMPLE_ORDER,
+            'Intervall': run_summary.sample_interval,
+            'Antal verifikationer i populationen': run_summary.eligible_verifications,
+            'Antal valda verifikationer': run_summary.sampled_verifications,
+            'Antal valda rader': run_summary.sampled_rows,
+        }])
+    if sampling_evidence is not None:
+        sheets['Urvalspositioner'] = sampling_evidence
+    return sheets
 
 
 def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
@@ -73,8 +130,13 @@ def generate_reports(
     output_dir: str | Path,
     summary: Mapping[str, int] | None = None,
     supplier_analysis=None,
+    run_summary=None,
+    source_context=None,
+    sampling_evidence=None,
+    original_data=None,
+    filtering=None,
 ) -> dict[str, Path]:
-    """Export three new workbooks and return their paths keyed by report name.
+    """Export review workbooks and return their paths keyed by report name.
 
     Inputs must already be cleaned, flagged and sampled by their respective
     modules. Every supplied check is exported once, in order, with no status
@@ -86,8 +148,10 @@ def generate_reports(
     (all rows of the supplied flagged verifications). Separate sheets avoid
     collisions between business columns and check metadata and retain null
     line IDs for verification-level checks. All columns and row order survive;
-    pandas index labels, attrs and Excel styling are not business columns and
-    are not exported. Empty outputs retain headers where a schema is supplied.
+    index labels/attrs are not inserted into original business columns. Supplied
+    source/run context is exported on separate evidence sheets. Uncertain rows
+    have a separate report; supplied original/filter data adds excluded rows.
+    Empty outputs retain headers where a schema is supplied.
 
     Excel-native scalar values are supported; Decimal values are explicitly
     stored as exact text, and pandas serializes nested Python objects as text.
@@ -103,6 +167,10 @@ def generate_reports(
     manual_sample = list(manual_sample)
     flagged_rows = _verification_rows(flagged_verifications, supplier_analysis)
     sample_rows = _verification_rows(manual_sample, supplier_analysis)
+    uncertain_rows = uncertain_supplier_rows(cleaned_data, supplier_analysis)
+    def audit(data, table_name='rows'):
+        return audit_sheets(data, source_context=source_context, run_summary=run_summary,
+                            sampling_evidence=sampling_evidence, table_name=table_name)
     checks = []
     for check in flagged_checks:
         record = asdict(check)
@@ -118,16 +186,22 @@ def generate_reports(
         checks.append(record)
     workbooks = {
         "cleaned_data": _workbook({"rows": enrich_rows(cleaned_data, supplier_analysis),
-                                    **supplier_sheets(supplier_analysis)}),
+                                    **supplier_sheets(supplier_analysis), **audit(cleaned_data)}),
         "flagged_invoices": _workbook({
             "checks": pd.DataFrame(checks, columns=CHECK_COLUMNS),
             "rows": flagged_rows,
             **supplier_sheets(supplier_analysis, flagged_rows.index),
             **({"Summary": pd.DataFrame([summary])} if summary is not None else {}),
+            **audit(flagged_rows),
         }),
         "manual_sample": _workbook({"rows": sample_rows,
-                                    **supplier_sheets(supplier_analysis, sample_rows.index)}),
+                                    **supplier_sheets(supplier_analysis, sample_rows.index), **audit(sample_rows)}),
+        "uncertain_suppliers": _workbook({"rows": uncertain_rows,
+                                    **supplier_sheets(supplier_analysis, uncertain_rows.index), **audit(uncertain_rows)}),
     }
+    if original_data is not None and filtering is not None:
+        _, excluded = review_tables(original_data, filtering)
+        workbooks['excluded_data'] = _workbook({'Bortfiltrerade': excluded, **audit(excluded, 'Bortfiltrerade')})
     directory = Path(output_dir)
     paths = {name: directory / f"{name}.xlsx" for name in workbooks}
     directory.mkdir(parents=True, exist_ok=True)
@@ -170,19 +244,32 @@ def review_summary(original_data, filtering):
     }
 
 
-def review_workbooks(original_data, filtering, supplier_analysis=None):
+def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_summary=None,
+                     source_context=None, sampling_evidence=None):
     review, excluded = review_tables(original_data, filtering)
     review = enrich_rows(review, supplier_analysis)
     counts = review_summary(original_data, filtering)
     if supplier_analysis is not None and supplier_analysis.registry.available:
         counts.update(supplier_analysis.summary())
+    if run_summary is not None:
+        counts.update(run_summary.counts())
+    def audit(data, table_name):
+        return audit_sheets(data, source_context=source_context, run_summary=run_summary,
+                            sampling_evidence=sampling_evidence, table_name=table_name)
+    review_audit = audit(review, 'Granskning')
+    excluded_audit = audit(excluded, 'Bortfiltrerade')
+    combined_audit = dict(review_audit)
+    if source_context is not None:
+        combined_audit['Källspårning'] = pd.concat([
+            review_audit['Källspårning'], excluded_audit['Källspårning']], ignore_index=True)
     summary = pd.DataFrame(list(counts.items()),
                            columns=['Mått', 'Antal'])
     return {
-        'granskning.xlsx': _workbook({'Granskning': review, **supplier_sheets(supplier_analysis)}),
-        'bortfiltrerade.xlsx': _workbook({'Bortfiltrerade': excluded}),
+        'granskning.xlsx': _workbook({'Granskning': review, **supplier_sheets(supplier_analysis), **review_audit}),
+        'bortfiltrerade.xlsx': _workbook({'Bortfiltrerade': excluded, **excluded_audit}),
         'samlad_kontrollfil.xlsx': _workbook({
             'Granskning': review, 'Bortfiltrerade': excluded, 'Sammanfattning': summary,
             **supplier_sheets(supplier_analysis),
+            **combined_audit,
         }),
     }

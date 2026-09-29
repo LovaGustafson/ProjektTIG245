@@ -38,7 +38,7 @@ def test_confirmed_exclusions_and_unresolved_types_preserve_input():
     result = filter_rows(source)
     assert result.cleaned_data.index.tolist() == [2, 3]
     assert result.excluded_data.index.tolist() == [0, 1, 4]
-    assert not result.todos
+    assert result.todos == ('Huvudtext saknas eller är tvetydig; interna leverantörer kunde inte kontrolleras.',)
     pd.testing.assert_frame_equal(source, before)
 
 

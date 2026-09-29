@@ -258,6 +258,11 @@ Current confirmed base filtering includes:
 - account `7699`,
 - configured excluded `verification_type` values.
 
+The feature-package request of 2026-09-24 also confirms exclusions for the exact
+internal supplier expressions `Försörjningsförvaltning`, `Fastighetstöd` and `mall`,
+with case/whitespace normalization and preserved exclusion evidence. See
+PROJECT_SPEC.md section 9. Do not expand these into substring or fuzzy exclusions.
+
 Filtering uses standardized field names, not fixed Excel column positions.
 
 Do not reintroduce historical assumptions such as "Vertyp is column J".

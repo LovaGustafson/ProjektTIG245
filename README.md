@@ -109,8 +109,14 @@ kräver det; miljön är inte fullständigt versionslåst.
 
 ## Leverantörsmatchning mot Koncerninköp
 
-Ladda upp både fakturafilen och Koncerninköpsregistret i Streamlits sidofält.
-Ange registerutdragets datum (förvalt **2026-08-31**) och starta analysen.
+Ladda upp fakturafilen i Streamlits sidofält. Ett lokalt Koncerninköpsregister kan
+användas som standard via `supplier_matching.default_registry_path` i
+`config/settings.yaml` (förvalt `data/reference/koncerninkop.xlsx`, relativt projektroten).
+Ingen verklig registerfil ingår i Git. Om filen saknas visas att matchning inte kan genomföras.
+Ett uppladdat register ersätter standardregistret; **Ta bort register** avaktiverar
+registeranvändningen och **Återställ standardregister** rensar uppladdningsvalet.
+Aktuell registerkälla visas i UI och exporteras med filnamn, SHA-256 och utdragsdatum.
+Kontrollera registerutdragets datum (konfigurerat till **2026-08-31**) och starta analysen.
 Granskning visar fyra statusar med färgikoner och en sammanfattning per
 transaktionsrad. Markera en rad för normalisering, metod, score, motivering,
 organisationsnummer, kandidater och möjliga avtal. Filterändringar behåller
@@ -151,8 +157,8 @@ avtalsnamn. TODO / AK: bekräfta andra registervarianter och kvarvarande fältbe
 
 Matchningsregler:
 
-- Extrahera endast text före första fristående `Prelb`/`Slutk` (okänsligt för
-  stora/små bokstäver). Originalets Huvudtext behålls.
+- Extrahera endast text före första `Prelb`/`Slutk` (okänsligt för stora/små
+  bokstäver). Även `Slutk123` känns igen. Originalets Huvudtext behålls.
 - Normalisera Unicode (NFKC), case, whitespace och skiljetecken. Explicita
   motsvarigheter som Aktiebolag/AB normaliseras, men bolagsformer tas inte bort.
   Svenska diakritiska tecken behålls.
@@ -183,7 +189,8 @@ Matchningsregler:
   datum får status UNKNOWN för datumkontrollen; leverantörsstatus påverkas inte.
 
 `src/supplier_matching/` håller extraktion, normalisering, matchning,
-datumkontroll och radanalys separerade. `src/ingestion/contract_reader.py`
+datumkontroll och radanalys separerade. `src/ingestion/registry_source.py` hanterar
+registerval utanför matchningsmotorn. `src/ingestion/contract_reader.py`
 läser registret, och `src/models/supplier.py` beskriver leverantörsidentiteter
 och resultat. `Motp` används aldrig som leverantörsnyckel. En framtida
 ID-resolver kan ge samma resultatmodell. Köp–avtalskategori implementeras inte.
@@ -197,9 +204,41 @@ separata blad för **Registerinformation**,
 namnkrockar ger ett `_`-prefix på det tillagda fältet. Saknat eller oläsbart
 register redovisas som otillgänglig matchning, aldrig som NO_MATCH. Loggning
 innehåller sammanfattade antal; matchningsresultatens fulla förklaringar sparas
-i resultatet. Källpositioner tillförs inte på detta sätt när registret saknas
-eller är oanvändbart, och inte till bortfiltrerade rader. Exporternas exakta
-spårbarhet är därför ännu ofullständig; se PROJECT_SPEC.md avsnitt 15.
+i resultatet. Separata blad **Källspårning** och **Källinformation** kopplar nu
+exportens blad/rad till källfilens hash, kalkylblad och ursprungliga Excel-rad,
+även för bortfiltrerade poster och körningar utan register. Fullständig export
+av alla validerings- och kontrollfynd återstår; se PROJECT_SPEC.md avsnitt 15.
+
+## Manuellt urval, avtalsperioder och nya exporter
+
+Körningsöversikten visar verkliga radantal, exkluderingsorsaker, ej grupperbara
+rader, flaggade verifikationer och urvalspopulation. Stickprovet väljer var
+20:e kvarvarande **verifikation**, i ordningen för första förekomst efter
+basfiltrering/gruppering. Alla verifikationer analyseras först; flaggning påverkar
+inte urvalet. 100 valbara verifikationer ger fem valda verifikationer, med alla
+deras kvarvarande rader. `manual_sample.xlsx` exporteras separat. Bladen
+**Urvalsmetod** och **Urvalspositioner** dokumenterar urval och ordning.
+
+`Slutk123`/`Slutk 123` känns igen utan hänsyn till versaler. Numrerade markörer
+och extra blanksteg tas bort i jämförelsetexten; originalets Huvudtext bevaras.
+Interna uttrycken **Försörjningsförvaltning**, **Fastighetstöd** och **mall**
+exkluderas med orsak. Hela leverantörsuttrycket måste stämma efter jämförelse
+av skiftläge/blanksteg; delsträngar och ungefärliga namn exkluderas inte.
+Dessa basfilter kan ändra stickprovet. Exkluderade rader finns i UI/export.
+
+Varje avtalsrad för en starkt identifierad leverantör får en separat jämförelse
+mot verifikationsdatumet: före, inom eller efter perioden, alternativt ej
+verifierbar. Originaldatum och använd period visas i **Möjliga avtal**.
+Detta bedömer inte vilket avtal köpet omfattas av. Prioritet mellan slutdatum
+och sista slutdatum samt giltighet på gränsdagarna inväntar bekräftelse (Q12);
+berörda fall får `NOT_CHECKED`. Registeråldersvarningar förblir separata.
+
+`uncertain_suppliers.xlsx` innehåller alla kvarvarande rader utan stark
+leverantörsträff: osäkra, omatchade och oidentifierade, samt rader där matchning
+inte kunde genomföras. Saknat register ger inte ett påhittat `NO_MATCH`.
+CLI exporterar även `excluded_data.xlsx` med exkluderade rader och orsaker.
+Alla rapporter använder den befintliga Excel-exportfunktionen. Någon registrerad
+granskningsprogress eller kollegial signering införs inte i detta paket.
 
 Grundfiltret behåller de 42 befintliga Vertyp-koderna, inklusive **FBFM**;
 **FBRM** läggs inte till. Konto 7698/7699 fungerar med tal och text.
@@ -247,8 +286,8 @@ förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
   Valideringen accepterar även heltaliga Excel-tal enligt ovan. Originalvärden behålls.
 - Valideringsdetaljer och samtliga kontrollresultat finns i UI/minnesresultatet;
   de exporteras inte fullständigt. CLI skapar rensat underlag, flaggningar,
-  stickprov och analysens sammanfattning, men sparar inte bortfiltrerade rader
-  eller deras orsaker. Streamlit erbjuder separata gransknings-/exkluderingsexporter.
+  stickprov, osäkra leverantörsträffar, exkluderade rader/orsaker och körningssammanfattning.
+  Streamlit erbjuder dessutom exporter med ursprungliga kolumnrubriker.
 - `code` i flaggrapporten är tomt: `check_type` identifierar kontrollen men är
   inte en orsakskod. Samma kontroll kan ge flera olika orsaker.
 - Egna framtida kontrolltexter behöver översättningar; originalorsaken bevaras.

@@ -9,6 +9,8 @@ import pyarrow as pa
 from src.output.report_generator import review_workbooks
 from src.presentation import context_fields, validation_records, validation_message
 from src.pipeline import PipelineResult, run_pipeline
+from src.filtering.filter_engine import DEFAULT_SETTINGS_PATH
+from src.ingestion.registry_source import resolve_registry_source, RegistrySource
 
 
 @dataclass
@@ -19,32 +21,46 @@ class UploadResult:
     excluded_types: tuple[str, ...] | None
     registry_content: bytes | None = None
     registry_snapshot_date: object = None
+    registry_source: RegistrySource | None = None
+    source_name: str | None = None
+    settings_path: object = DEFAULT_SETTINGS_PATH
 
 
 def analyze_upload(content: bytes, *, excluded_verification_types=None,
-                   registry_content=None, registry_snapshot_date=None) -> UploadResult:
+                   registry_content=None, registry_snapshot_date=None,
+                   registry_mode='default', registry_name=None, registry_source=None,
+                   source_name=None, settings_path=DEFAULT_SETTINGS_PATH) -> UploadResult:
     """Analyze a private working copy; collect downloads before deleting files.
 
     Upload names are never used as paths. PipelineResult.report_paths refer to
     deleted temporary files after return; use downloads for all UI downloads.
     """
+    selected_registry = registry_source or resolve_registry_source(
+        settings_path=settings_path, mode=registry_mode,
+        uploaded_content=registry_content, uploaded_name=registry_name,
+        registry_snapshot_date=registry_snapshot_date)
     with TemporaryDirectory(prefix='invoice-review-') as directory:
         root = Path(directory)
         source = root / 'upload.xlsx'
         source.write_bytes(content)
         registry_path = None
-        if registry_content is not None:
-            registry_path = root / 'registry.xlsx'
-            registry_path.write_bytes(registry_content)
+        if selected_registry.content is not None:
+            registry_path = root / ('registry' + selected_registry.format_suffix)
+            registry_path.write_bytes(selected_registry.content)
         result = run_pipeline(source, output_dir=root / 'reports',
                               excluded_verification_types=excluded_verification_types,
                               supplier_register=registry_path,
-                              registry_snapshot_date=registry_snapshot_date)
+                              registry_snapshot_date=registry_snapshot_date,
+                              registry_source=selected_registry, source_name=source_name,
+                              settings_path=settings_path)
         downloads = {path.name: path.read_bytes() for path in result.report_paths.values()}
-    downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis))
+    downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
+                                     run_summary=result.summary, source_context=result.source_context,
+                                     sampling_evidence=result.sampling_evidence))
     return UploadResult(result, downloads, bytes(content),
                         None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)),
-                        registry_content, registry_snapshot_date)
+                        selected_registry.content, selected_registry.snapshot_date,
+                        selected_registry, source_name, settings_path)
 
 
 def flagged_table(result: PipelineResult) -> pd.DataFrame:
@@ -88,8 +104,8 @@ def display_dataframe(data) -> pd.DataFrame:
 
 
 REVIEW_EXPLANATION = (
-    'Denna rad är kvar eftersom den inte träffar någon aktiv filterregel för konto '
-    'eller verifikationstyp. Det betyder inte automatiskt att raden är felaktig '
+    'Denna rad är kvar eftersom den inte träffar någon aktiv filterregel för konto, '
+    'verifikationstyp, intern leverantör eller strukturell rapportrad. Det betyder inte automatiskt att raden är felaktig '
     'eller en avvikelse. Den är kvar för fortsatt manuell kontroll.'
 )
 

@@ -25,7 +25,8 @@ def test_upload_round_trip_cleanup_and_summaries():
     assert ui_support.flagged_table(review.result).empty
     assert len(ui_support.validation_table(review.result)) == 1
     assert set(review.downloads) == {'cleaned_data.xlsx', 'flagged_invoices.xlsx', 'manual_sample.xlsx',
-                                     'granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx'}
+                                     'granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx',
+                                     'uncertain_suppliers.xlsx', 'excluded_data.xlsx'}
     for filename, data in review.downloads.items():
         assert pd.ExcelFile(BytesIO(data)).sheet_names
     assert all(not path.parent.parent.exists() for path in review.result.report_paths.values())
@@ -76,14 +77,15 @@ def test_streamlit_result_screen():
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1', '4']
     assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel', 'Ej kontrollerade']
     assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll']
-    assert len(app.get('download_button')) == 5
+    assert len(app.get('download_button')) == 6
     assert app.warning
     assert 'inte att alla kontroller är godkända' in app.warning[0].value
     controls = app.tabs[2].dataframe[0].value
     assert controls['Status'].tolist() == ['Ej kontrollerad'] * 4
     assert len(app.tabs[0].dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
-        'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport', 'Hämta manuellt stickprov']
+        'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
+        'Hämta manuellt stickprov', 'Hämta osäkra leverantörsträffar']
 
 
 def test_flagged_selection_shows_all_reasons():

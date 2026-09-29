@@ -43,7 +43,9 @@ def test_partition_original_values_export_and_source_file(tmp_path):
     exported.write_bytes(review.downloads['samlad_kontrollfil.xlsx'])
     from openpyxl import load_workbook
     book = load_workbook(exported)
-    assert book.sheetnames == ['Granskning', 'Bortfiltrerade', 'Sammanfattning']
+    assert book.sheetnames[:3] == ['Granskning', 'Bortfiltrerade', 'Sammanfattning']
+    assert {'Källspårning', 'Källinformation', 'Urvalsmetod', 'Urvalspositioner',
+            'Körningsöversikt', 'Exkluderingsregler', 'Registerinformation'} <= set(book.sheetnames)
     assert book['Granskning'].max_row == 3
     assert book['Bortfiltrerade'].max_row == 6
     assert book['Granskning']['G2'].value == '=1+1'
@@ -148,7 +150,8 @@ def test_metadata_header_upload_filters_rendering_and_export(tmp_path):
     assert removed['Vernr'].tolist() == ['0', '1', '2', '3', '4']
     assert kept.columns.is_unique and removed.columns.is_unique
     with pd.ExcelFile(BytesIO(review.downloads['samlad_kontrollfil.xlsx'])) as exported:
-        assert exported.sheet_names == ['Granskning', 'Bortfiltrerade', 'Sammanfattning']
+        assert exported.sheet_names[:3] == ['Granskning', 'Bortfiltrerade', 'Sammanfattning']
+        assert 'Källspårning' in exported.sheet_names
         assert len(pd.read_excel(exported, sheet_name='Granskning')) == 2
         assert len(pd.read_excel(exported, sheet_name='Bortfiltrerade')) == 5
     assert path.read_bytes() == before

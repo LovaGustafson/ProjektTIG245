@@ -7,9 +7,8 @@ STALE_REGISTRY_MESSAGE = ('Avtalsregistret är äldre än transaktionen – resu
                           'verifieras mot senare register.')
 
 
-def registry_date_check(value, snapshot, *, date_format=None):
-    if snapshot is None:
-        return False, 'UNKNOWN', 'Registerdatum saknas; registerålder kunde inte kontrolleras.'
+def parse_review_date(value, *, date_format=None):
+    """Use explicit/native dates only, never guess locale or Excel serials."""
     parsed = None
     if pd.api.types.is_scalar(value) and not pd.isna(value):
         if isinstance(value, datetime):
@@ -22,6 +21,13 @@ def registry_date_check(value, snapshot, *, date_format=None):
                           datetime.fromisoformat(value.strip())).date()
             except ValueError:
                 pass
+    return parsed
+
+
+def registry_date_check(value, snapshot, *, date_format=None):
+    if snapshot is None:
+        return False, 'UNKNOWN', 'Registerdatum saknas; registerålder kunde inte kontrolleras.'
+    parsed = parse_review_date(value, date_format=date_format)
     if parsed is None:
         return False, 'UNKNOWN', 'Transaktionsdatum saknas eller är ogiltigt; registerålder kunde inte kontrolleras.'
     if parsed > snapshot:

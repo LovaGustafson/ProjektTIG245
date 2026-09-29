@@ -110,14 +110,20 @@ def read_excel(
             rows = workbook[selected].iter_rows(values_only=True)
             preview = list(islice(rows, HEADER_SCAN_ROWS))
             if not preview:
-                return pd.DataFrame(dtype=object)
+                result = pd.DataFrame(dtype=object)
+                result.attrs['source_sheet'] = selected
+                result.attrs['source_header_row'] = None
+                return result
             header_position = _header_position(preview, header_aliases, header_minimum_fields)
             headers = preview[header_position]
             data = pd.DataFrame(
                 chain(preview[header_position + 1:], rows),
                 columns=pd.Index(headers, dtype=object), dtype=object,
             )
-            return _prepare_columns(data)
+            result = _prepare_columns(data)
+            result.attrs['source_sheet'] = selected
+            result.attrs['source_header_row'] = header_position + 1
+            return result
         except OSError:
             raise
         except Exception as exc:

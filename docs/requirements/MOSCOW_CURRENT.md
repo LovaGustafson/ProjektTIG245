@@ -1,6 +1,6 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 This document contains the current customer requirements for the TIG245 prototype.
 
@@ -8,6 +8,18 @@ These requirements must be treated as the current customer priority baseline.
 
 Do not invent missing business rules.
 Where a requirement is ambiguous, implementation must be based on an explicitly documented rule or marked as requiring clarification.
+
+The feature-package request of 2026-09-24 confirms the following work within M2/M4/M5/M6, S4 and C1–C3:
+
+- Preserve verification-level every-20th sampling and add population/ordering evidence, UI counts and a separate export.
+- Remove numbered `Slutk` markers from a comparison copy while preserving original Huvudtext and established supplier extraction/matching rules.
+- Exclude the exact internal supplier expressions `Försörjningsförvaltning`, `Fastighetstöd` and `mall`, allowing case/whitespace variations, with preserved occurrences, reasons and rule counts. These filters may change sampling eligibility.
+- Compare identified suppliers' individual register-contract periods with verification dates, separately from identity confidence and purchase-to-contract applicability. End-date priority and boundary-day rules remain [Q12](OPEN_QUESTIONS.md#q12--contract-period-date-rules); no automatic compliance approval is authorized.
+- Export all retained rows without a strong supplier match, including explicitly unavailable matching without fabricated `NO_MATCH` results.
+- Support a configurable local default Koncerninköp register, replacement uploads, disabling and restoration, with visible register identity. No register file is included in Git.
+- Present actual pipeline counts, exclusions, contract-date outcomes, unavailable controls and traceability. No artificial reviewer-completion status is introduced.
+
+These confirmations do not reopen duplicate removal or authorize autonomous controls, Proceedo integration or other Won't Have functionality.
 
 ---
 
@@ -47,7 +59,7 @@ Status:
 Current capability and boundary:
 - The prototype can account for the parsed population supplied to it through retained and excluded rows with reasons.
 - Currently one worksheet is read, and metadata above the detected header is outside the parsed table. This is not a completeness check of an entire source system or arbitrary workbook.
-- Streamlit provides included/excluded counts and review exports; CLI reports do not yet persist all exclusion evidence.
+- Streamlit and CLI provide included/excluded counts and exports retaining excluded source occurrences and reasons.
 - The customer extracts from Proceedo. Without independent evidence, the prototype cannot confirm that the extract includes the entire required source-system population.
 - No supplied occurrence should silently disappear; technical ingestion success is not proof of completeness.
 
@@ -86,7 +98,7 @@ Status:
 
 Current preservation rule and implementation:
 - Invalid or incomplete records must remain available with their technical findings, without silently removing or correcting them.
-- Confirmed account/selected `VERTYP` exclusions are separate from invalid records and detection flags; excluded occurrences remain accounted for with reasons where currently supported.
+- Confirmed account/selected `VERTYP` and internal-supplier exclusions are separate from invalid records and detection flags; excluded occurrences remain accounted for with reasons.
 - Technical validation checks the five fields documented in PROJECT_SPEC.md; this does not confirm mandatory business information or turn a validation error into a business deviation.
 - Retained rows with unusable verification IDs remain ungrouped and available for review, outside verification-level detection and sampling.
 - Existing recognition of blank/report rows produces `NOT_APPLICABLE` validation and explained exclusions. This is current technical behavior, not a resolved customer definition of the structural-row/business-record boundary.
@@ -110,6 +122,7 @@ Confirmed rule and current behavior:
 - Selection is at verification level and independent of flags; selected groups retain their rows. The configured interval is 20.
 - Changes to base filtering, grouping or ordering can change the sample; temporary UI view filters do not.
 - The selection criteria must be transparent and reproducible.
+- UI and export now show population count, interval, selected verifications/rows, ordering and selected source positions. Customer retention/approval requirements remain open.
 
 Open question: what evidence/documentation of this selection does the customer require? See [Q2](OPEN_QUESTIONS.md#q2--sampling-evidence). The interval of 20 is already confirmed and is not reopened by this question.
 
@@ -122,7 +135,7 @@ Customer requirement:
 > Det finns spårbarhet mellan källdata och granskningsunderlag.
 
 Status:
-- PARTIALLY IMPLEMENTED / EXPORT TRACEABILITY INCOMPLETE
+- SOURCE-OCCURRENCE EXPORT LINKAGE IMPLEMENTED / COMPLETE FINDING EXPORT STILL INCOMPLETE
 
 Required principle:
 - Review material must be traceable to the exact source occurrence, including where business identifiers are repeated, missing or invalid.
@@ -131,8 +144,8 @@ Required principle:
 
 Current implementation:
 - Parsed source positions survive through much of the in-memory pipeline and UI; supplier evidence uses retained source indexes.
-- Exports do not consistently carry source positions, and the result model does not retain the worksheet/header-offset information needed for an Excel-row locator.
-- Detection row positions and validation/source positions use different coordinate systems. Full traceability in every export is not yet implemented.
+- Pipeline/UI exports contain separate provenance sheets with source filename/hash, worksheet, original Excel row and export sheet/row. This also covers excluded rows and runs without a register.
+- Detection row positions and validation/source positions still use different coordinate systems. Detailed validation and all nonflagged detection findings are not yet fully exported; full M6 completion is not claimed.
 
 Open question: what source-occurrence information and presentation must accompany each review/export category? See [Q3](OPEN_QUESTIONS.md#q3--source-occurrence-traceability). This does not reopen the requirement to preserve occurrences.
 

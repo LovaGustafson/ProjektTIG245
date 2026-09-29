@@ -141,7 +141,10 @@ def test_kpi_click_restores_exact_card_rows_and_reset_on_rule_change_and_new_upl
     choose(app, 'review_rows', 'Konto')
     app.file_uploader[0].set_value(('new.xlsx', source(),
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).run()
-    assert not any(name.startswith('vf:') for name in app.session_state.filtered_state)
+    # Streamlit 1.64 exposes a mapping; 1.63 exposes SafeSessionState.
+    state_keys = (app.session_state.keys() if hasattr(app.session_state, 'keys')
+                  else app.session_state.filtered_state)
+    assert not any(name.startswith('vf:') for name in state_keys)
 
 
 def test_manual_sample_has_original_fields_and_independent_filters():

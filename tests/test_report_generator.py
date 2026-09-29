@@ -46,7 +46,7 @@ def export(rows, directory):
 def test_all_reports_read_back_with_complete_rows_and_multiple_reasons(tmp_path, rows):
     paths = export(rows, tmp_path / "reports")
     assert {path.name for path in paths.values()} == {
-        "cleaned_data.xlsx", "flagged_invoices.xlsx", "manual_sample.xlsx"}
+        "cleaned_data.xlsx", "flagged_invoices.xlsx", "manual_sample.xlsx", "uncertain_suppliers.xlsx"}
     for name, expected in [("cleaned_data", rows), ("flagged_invoices", rows.iloc[:2]),
                            ("manual_sample", rows.iloc[2:])]:
         actual = read_excel(paths[name], sheet_name="rows")
@@ -113,8 +113,11 @@ def test_empty_outputs_are_readable(tmp_path, rows, with_schema):
     for name, path in paths.items():
         result = read_excel(path, sheet_name="rows")
         assert result.empty
-        assert result.columns.tolist() == (cleaned.columns.tolist() if name == "cleaned_data"
-                                           else ["verification_id", "verification_line_id"])
+        expected = cleaned.columns.tolist() if name in ('cleaned_data', 'uncertain_suppliers') else ["verification_id", "verification_line_id"]
+        if name == 'uncertain_suppliers':
+            expected += ['source_row_position', 'header_text_normalized', 'supplier_match_status',
+                         'supplier_check_status', 'supplier_match_reason']
+        assert result.columns.tolist() == expected
     checks = read_excel(paths["flagged_invoices"], sheet_name="checks")
     assert checks.empty
     assert checks.columns.tolist() == CHECK_COLUMNS

@@ -10,6 +10,29 @@
     --audit-shadow: 0 3px 12px rgb(23 43 66 / 4%);
 }
 
+/* Run overview: compact metrics with labels that wrap on laptop screens. */
+.st-key-overview_kpis [data-testid="stMetric"] {
+    background: var(--audit-surface);
+    border-top: 3px solid var(--audit-accent);
+    border-radius: 0.4rem;
+    padding: 0.7rem 0.8rem;
+    box-shadow: var(--audit-shadow);
+}
+.st-key-overview_kpis [data-testid="stMetricValue"] {
+    font-size: 1.8rem;
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 1050px) {
+    .st-key-overview_kpis [data-testid="stHorizontalBlock"],
+    .st-key-sample_overview [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-overview_kpis [data-testid="stColumn"],
+    .st-key-sample_overview [data-testid="stColumn"] { flex: 1 1 30%; min-width: 30%; }
+}
+@media (max-width: 640px) {
+    .st-key-overview_kpis [data-testid="stColumn"],
+    .st-key-sample_overview [data-testid="stColumn"] { flex: 1 1 45%; min-width: 45%; }
+}
+
 /* These few Streamlit element selectors handle page width and native widgets;
    avoid generated class names and DOM-position selectors. */
 [data-testid="stMainBlockContainer"] {
@@ -137,7 +160,7 @@
     height: auto;
 }
 .st-key-dashboard_kpis button {
-    min-height: 10rem;
+    min-height: 6rem;
     height: 100%;
     padding: 1rem;
     border-radius: var(--audit-radius);
@@ -153,7 +176,7 @@
     overflow-wrap: anywhere;
 }
 .st-key-dashboard_kpis button strong {
-    font-size: 2rem;
+    font-size: 1.5rem;
     font-weight: 650;
     font-variant-numeric: tabular-nums;
     line-height: 1.5;

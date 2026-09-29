@@ -4,6 +4,7 @@ import streamlit as st
 
 from src.ui_support import display_dataframe
 from src.ui_navigation import select_drilldown
+from src.supplier_matching.contract_period import ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE
 
 STATUS_LABELS = {
     'STRONG_MATCH': '🟢 Stark leverantörsträff',
@@ -31,7 +32,11 @@ def show_supplier_summary(analysis):
     for issue in analysis.registry.issues:
         st.warning(issue)
     if not analysis.registry.available:
-        st.error('Leverantörsmatchningen kunde inte genomföras. Kontrollera registret och kolumnmappningen.')
+        message = 'Leverantörsmatchningen kunde inte genomföras. Kontrollera registret och kolumnmappningen.'
+        if analysis.registry.source_sha256 is None and analysis.registry.source_kind in ('default', 'disabled'):
+            st.info(message)
+        else:
+            st.error(message)
         return
     st.caption(f'Registerutdrag: {analysis.registry.snapshot_date or "datum saknas"}. '
                'En leverantörsträff visar möjliga avtal. Vilket avtal köpet avser är inte bedömt.')
@@ -43,6 +48,13 @@ def show_supplier_summary(analysis):
     unknown_dates = int((analysis.rows['registry_date_check'] == 'UNKNOWN').sum())
     if unknown_dates:
         st.warning(f'{unknown_dates} rader kunde inte datumkontrolleras. Se raddetaljer.')
+    st.markdown('**Avtalsperioder vid verifikationsdatum**')
+    counts = analysis.contracts['contract_period_result'].value_counts()
+    for label in (ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE):
+        st.text(f'{label}: {int(counts.get(label, 0))} avtalsjämförelser')
+    st.caption('Varje registeravtal jämförs separat med källradens datum. Flera avtal kan finnas per rad. '
+               'En aktiv period bevisar inte att köpet omfattas av avtalet. '
+               'Ej verifierbara perioder är inte konstaterade avvikelser.')
 
 
 def supplier_review_table(kept, analysis):
@@ -112,7 +124,16 @@ def show_supplier_detail(analysis, source_position):
     contracts = analysis.contracts[analysis.contracts['source_row_position'] == source_position]
     if not contracts.empty:
         with st.expander('Möjliga avtal – inget avtal har valts automatiskt'):
-            st.caption('Alla registerposter för kandidaterna visas. Datum och kategori används '
-                       'ännu inte för att bedöma vilket avtal fakturan avser.')
+            st.caption('Alla registerposter visas med originaldatum, använd period, verifikationsdatum '
+                       'och kontrollresultat. Osäker identitet eller oklara datum ger NOT_CHECKED. '
+                       'Vilket avtal köpet omfattas av har inte avgjorts.')
             st.dataframe(display_dataframe(contracts.drop(columns='source_row_position')),
-                         hide_index=True, width='stretch')
+                         hide_index=True, width='stretch', column_config={
+                             'contract_id': 'Avtals-ID', 'contract_name': 'Avtalsnamn',
+                             'start_date': 'Startdatum (original)', 'end_date': 'Slutdatum (original)',
+                             'final_end_date': 'Sista slutdatum (original)',
+                             'verification_date': 'Verifikationsdatum (original)',
+                             'evaluated_start_date': 'Använd period från', 'evaluated_end_date': 'Använd period till',
+                             'contract_period_result': 'Avtalsperiod vid verifikationsdatum',
+                             'contract_period_reason': 'Motivering',
+                         })

@@ -29,7 +29,7 @@ Status: Open
 - What evidence must document selection of every 20th eligible verification: eligible population, ordering, applied exclusions, interval, selected positions or other information?
 - Where should that evidence appear, and what must a reviewer retain to reproduce or verify the sample?
 
-The interval is already confirmed; this question does not authorize changing the selection method.
+The 2026-09-24 feature package now records population, ordering, exclusions, interval and selected source positions in UI/export. Customer requirements for further evidence, retention and approval remain open. The interval is already confirmed; this question does not authorize changing the selection method.
 
 ## Q3 — Source-occurrence traceability
 
@@ -40,7 +40,7 @@ Status: Open
 - Which source-file, worksheet and occurrence information must accompany review material and each export?
 - How should included, excluded, invalid, ungrouped and sampled occurrences and their findings be linked and presented to reviewers?
 
-Exact-occurrence linkage is required; the evidence/presentation expectations remain open. Existing export limitations do not weaken the preservation requirement.
+Source/export sheet-row linkage, source-file name/hash and worksheet/header metadata are now implemented for pipeline/UI row exports, including exclusions. Further customer presentation/retention expectations and complete validation/detection-finding export remain open. Existing limitations do not weaken the preservation requirement.
 
 ## Q4 — Source and extract assurance
 
@@ -97,7 +97,7 @@ Status: Open
 - What approval and supporting evidence are required when changing the standard verification-type exclusions or selecting additional types?
 - Who may make such changes, and what selection history or run-specific configuration must accompany the review material and resulting sample?
 
-Confirmed account exclusions and the existing standard verification-type set are unchanged. UI/configuration capabilities alone do not authorize new business exclusions.
+Confirmed account exclusions and the existing standard verification-type set are unchanged. The 2026-09-24 request separately authorizes exact internal-supplier exclusions for Försörjningsförvaltning, Fastighetstöd and mall. Approval/evidence for other selection changes remains open; UI/configuration capabilities alone do not authorize new business exclusions.
 
 ## Q9 — External AI/Codex governance
 
@@ -127,10 +127,26 @@ Existing internal field labels and provisional UI presence interpretations do no
 
 Related requirements: C1, C2, C3
 
-Status: Open / optional
+Status: Partly specified by the 2026-09-24 feature package / further needs open
 
 - Which review questions, metrics or visualizations would provide additional value beyond the current views?
 - What does the customer mean by automated dashboards, and which improvements can be considered within the current user-triggered workflow?
 - For any proposed additional analysis, what are its purpose, supported interpretation, required evidence and acceptance criteria?
 
 These questions do not prioritize optional work over Must Haves or authorize scheduled ingestion, Proceedo integration, speculative controls or autonomous decisions.
+
+The requested user-triggered overview now includes received/included/excluded counts and reasons, flagged verifications, supplier confidence/availability, separate contract-period comparisons, sample counts and source traceability. Formal review progress remains unavailable because no reviewer-state workflow exists.
+
+## Q12 — Contract-period date rules
+
+Related requirements: S4, C3; M6 evidence; W1/W3 boundaries
+
+Status: Open — requested during implementation of the 2026-09-24 feature package
+
+- When `Slutdatum` and `Sista slutdatum` both exist or differ, which determines the applicable end of the period? Does `Sista slutdatum` describe an exercised extension or only a possible extension?
+- If one end-date field is missing, may the other be used, and under what conditions?
+- Are the start day and end day included in the valid period?
+
+The implementation evaluates unambiguous ordinary periods strictly before/inside/after their bounds. Conflicting end dates, final-date-only records and unconfirmed boundary-day cases remain `NOT_CHECKED` with preserved date evidence. Configuration options do not confirm a rule. Every candidate contract remains visible; no purchase-to-contract applicability or compliance conclusion is inferred.
+
+Deployment input still needed: the local source path for the default Koncerninköp register. No real register file was available in the repository data folders during implementation; the default path is configurable and missing files remain explicitly unavailable.

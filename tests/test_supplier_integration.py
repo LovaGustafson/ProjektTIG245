@@ -67,8 +67,9 @@ def test_complete_pipeline_preserves_both_original_files_and_filters_before_matc
                for verification in result.verifications)
     for path, content, mtime in originals:
         assert path.read_bytes() == content and path.stat().st_mtime_ns == mtime
-    for report in result.report_paths.values():
-        assert 'Leverantörsmatchning' in pd.ExcelFile(report).sheet_names
+    for name, report in result.report_paths.items():
+        with pd.ExcelFile(report) as book:
+            assert ('Leverantörsmatchning' in book.sheet_names) == (name != 'excluded_data')
     checks = [check for detection in result.detection_results for check in detection.checks]
     assert all(check.status == 'NOT_CHECKED' for check in checks)
     assert any('Avtalstrohet har inte kontrollerats' in check.reason for check in checks)

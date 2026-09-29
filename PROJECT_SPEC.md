@@ -2,7 +2,7 @@
 
 ## TIG245 — Current Technical Specification
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 ---
 
@@ -125,7 +125,7 @@ Manual sampling
 Excel output / Streamlit presentation
 ```
 
-`src/pipeline.py` orchestrates this flow and returns `PipelineResult`, including original and standardized tables, validation, filtering, ungrouped rows, verifications, detection, sample and optional supplier analysis. It loads explicitly supplied image/reference evidence before detection; loading evidence does not confirm a business rule.
+`src/pipeline.py` orchestrates this flow and returns `PipelineResult`, including original and standardized tables, validation, filtering, ungrouped rows, verifications, detection, sample, supplier/contract-date evidence, `RunSummary`, sampling positions, source-file context and the register snapshot used. It loads explicitly supplied image/reference evidence before detection; loading evidence does not confirm a business rule.
 
 `src/ui_support.py` runs the pipeline on temporary upload copies, collects report bytes, and adds the Streamlit review workbooks. `streamlit_app.py`, `src/presentation.py` and the `src/ui_*.py` modules present these results.
 
@@ -135,7 +135,7 @@ Excel output / Streamlit presentation
 
 All rows below that header are read. Named columns and populated unnamed columns survive; only unnamed empty columns are removed. Duplicate named headers, blank cells, text identifiers, formula expressions and Excel errors are retained. Excel-native dates/numbers are decoded; formatting is not preserved and formulas are not evaluated.
 
-Source files are opened read-only. Mapping, filtering and analysis work on copies and must not overwrite source values with comparison keys. `original_data` is the parsed table, not a complete copy of workbook metadata or formatting. Streamlit additionally retains the uploaded bytes in session memory.
+Source files are opened read-only. Mapping, filtering and analysis work on copies and must not overwrite source values with comparison keys. `original_data` is the parsed table, not a complete copy of workbook metadata or formatting. The reader retains the selected sheet name and one-based header row in DataFrame attributes. The pipeline records source filename and SHA-256; Streamlit additionally retains the uploaded bytes in session memory.
 
 `src/ingestion/reference_reader.py` reads local Excel/CSV reference tables with technical loading states; successful loading does not prove schema approval or completeness. `src/ingestion/image_reader.py` reads local images/PDFs without OCR. `Bild` linkage is not inferred.
 
@@ -194,6 +194,8 @@ Account comparisons normalize integral numeric representations and surrounding w
 
 The UI can change verification-type selections and rerun analysis; configured account exclusions remain in effect. Approval/evidence for changes to exclusion selections remains Q8. Such changes can alter grouping and the manual sample. Technical configurability alone is not business authorization.
 
+The 2026-09-24 feature-package request additionally confirms exclusion of `Försörjningsförvaltning`, `Fastighetstöd` and `mall`, configured in `excluded_internal_suppliers`. `src/filtering/internal_suppliers.py` compares the extracted supplier expression (or the whole cleaned header when no marker exists), using Unicode NFKC, case folding and whitespace removal. The entire expression must match; there is no substring, fuzzy, legal-form or spelling expansion. Other names remain included. Missing/ambiguous `header_text` produces an explicit incomplete-filtering warning. The reason `Intern leverantör: <expression>` and per-rule positions/counts survive; overlapping rules count once in the excluded population. These exclusions run before matching, grouping and sampling and can change the manual sample.
+
 # 10. Verification grouping and eligibility
 
 `src/verification/verification_builder.py` produces `Verification` objects (`src/models/verification.py`) grouped by the normalized `verification_id` comparison key. Groups follow first appearance in the retained table; rows within each group retain their input order, values and indexes. Rows are neither deduplicated nor aggregated, and line IDs are not sorted.
@@ -225,7 +227,7 @@ Rule exceptions, malformed results and empty rule output become `ERROR`; prior r
 
 `src/supplier_matching/` separates extraction, normalization, matching, date warnings, settings and row analysis; `src/models/supplier.py` defines their result models.
 
-- Extraction uses only text before the first standalone `Prelb`/`Slutk` marker in `header_text`/`Huvudtext`, case-insensitively. Missing markers/candidates remain unidentified. `Motp` is never a matching key.
+- Extraction uses only text before the first `Prelb`/`Slutk` marker in `header_text`/`Huvudtext`, case-insensitively. `Slutk123` and `Slutk 123` are both recognized; existing standalone markers remain supported. Missing markers/candidates remain unidentified. `normalize_header_text` separately removes numbered Slutk occurrences and collapses whitespace on a comparison copy, exported as `header_text_normalized`. Original Huvudtext is preserved. `Motp` is never a matching key.
 - Comparison normalization preserves original text and Swedish diacritics; it normalizes Unicode, case, whitespace, punctuation and explicit equivalent legal-form names without treating distinct legal forms as equivalent.
 - Matching ranks exact normalized names, eligible prefixes and deterministic fuzzy candidates. Current technical defaults are prefix length 8, two tokens and 60% coverage; fuzzy strong/candidate thresholds are 0.94/0.82. Additional token and legal-form safeguards apply in `matcher.py`. These are prototype settings, not customer compliance thresholds or probabilities.
 - `STRONG_MATCH` requires one plausible eligible supplier identity with an organization number. Multiple or uncertain candidates remain `AMBIGUOUS_MATCH` for manual review, with no chosen supplier. Other states are `NO_MATCH` and `SUPPLIER_NOT_IDENTIFIED`.
@@ -235,13 +237,27 @@ Rule exceptions, malformed results and empty rule output become `ERROR`; prior r
 
 Row evidence joins through retained source indexes, not verification or supplier identity. Q10 covers unresolved field/control meanings; M7/Q9 governs any future AI use.
 
+## Register source selection
+
+`src/ingestion/registry_source.py` isolates source selection from identity matching. `supplier_matching.default_registry_path` selects a local default file (relative paths resolve against the project root); an optional `default_registry_name` controls its label. The configured path is `data/reference/koncerninkop.xlsx`. No real register is distributed in Git; the file must exist locally before default matching is available. UI uploads replace the default, removal disables register use, and restoring the default clears the uploaded selection. CLI supports `--supplier-register` and `--no-default-registry`.
+
+An immutable `RegistrySource` retains the exact bytes, source kind/name, snapshot date and SHA-256 for the run. UI refiltering reuses these bytes even if the local default file subsequently changes. Source/register changes clear stale results. Missing, disabled or unreadable sources remain unavailable; they do not trigger a substitute register or fabricated negative matches. Register date is explicit configuration/UI input, not inferred from filenames. Export metadata also records the parsed register sheet and header row when available.
+
+## Contract-period evidence
+
+The 2026-09-24 request authorizes date comparisons, separately from purchase-to-contract applicability. `src/supplier_matching/contract_period.py` compares each register contract of a strongly identified supplier with each retained row's verification date. Multiple contracts are preserved and checked separately; none is selected as the purchase's governing contract. Ambiguous candidates remain `NOT_CHECKED`.
+
+The contract reader preserves `start_date`, `end_date` and `final_end_date` (including the alias `Sista slutdatum`). Evidence includes original dates, parsed verification date, evaluated period, end-date basis, boundary-policy setting, rule identifier, reason and the existing `PASS`/`FLAGGED`/`NOT_CHECKED` status vocabulary. `PASS` means within that register period only; `FLAGGED` means before or after it. These results do not change supplier confidence or manufacture procurement-compliance/detection conclusions. Summary counts explicitly use **contract comparisons**, not invoices or unique contracts.
+
+Pending Q12, `contract_period.end_date_field` and `inclusive_boundaries` remain null. An ordinary end date with no final date, or two agreeing end dates, supports checks strictly before/inside/after the period. Conflicting end dates, a final date without an ordinary end date, boundary-day transactions, missing/unreadable dates or reversed periods yield `NOT_CHECKED` with a reason. No extension priority or inclusive-day rule is guessed. Configurable end-field/boundary policies are implementation capabilities, not approval to select a business rule. Snapshot freshness remains a separate warning.
+
 # 13. Manual sampling
 
 The confirmed rule is **every 20th eligible verification**. `src/sampling/manual_sample.py` uses `manual_sample_interval: 20` in repository configuration and selects positions 20, 40, 60, etc. in the builder's first-appearance order after filtering/grouping and analysis of every eligible verification.
 
 Sampling is separate from detection, independent of flags, and selects complete retained verification groups rather than raw Excel rows. Fewer than 20 eligible verifications gives an empty sample. Copies retain source indexes. Changes to base exclusions, grouping or source order can change selection; temporary UI view filters do not.
 
-The helper supports other configured intervals technically; that does not authorize changing the confirmed customer interval. Q2 concerns required evidence/documentation of this selection, not whether the interval is 20.
+The helper supports other configured intervals technically; that does not authorize changing the confirmed customer interval. The pipeline loads the interval once and records population count, ordering, selected verification positions and all selected source positions. UI shows eligible verification count, `1 av 20`, selected verification count and selected row count. Q2 remains open for customer retention/approval requirements beyond the implemented evidence.
 
 # 14. Exports and review UI
 
@@ -252,16 +268,23 @@ The helper supports other configured intervals technically; that does not author
 | `cleaned_data.xlsx` | `rows`: all retained standardized rows, including ungrouped/invalid rows. |
 | `flagged_invoices.xlsx` | `checks`: FLAGGED results supplied by the pipeline; `rows`: their retained verification rows; `Summary`: analysis counts. |
 | `manual_sample.xlsx` | `rows`: retained rows of selected verifications. |
+| `uncertain_suppliers.xlsx` | `rows`: every retained occurrence without `STRONG_MATCH`, including ambiguous, unmatched, unidentified and unavailable matching. Unavailable rows have no fabricated match status and explicitly carry `supplier_check_status: NOT_CHECKED`. |
+| `excluded_data.xlsx` | `Bortfiltrerade`: original excluded rows and all exclusion reasons. |
 
-Streamlit also prepares `granskning.xlsx` (`Granskning`), `bortfiltrerade.xlsx` (`Bortfiltrerade`) and `samlad_kontrollfil.xlsx` (both tables plus `Sammanfattning`). These tables retain original source headers/values; excluded rows receive an extra reason column. The UI offers these three downloads plus the flagged and sample workbooks. Temporary pipeline files are removed after their bytes are collected.
+Streamlit also prepares `granskning.xlsx` (`Granskning`), `bortfiltrerade.xlsx` (`Bortfiltrerade`) and `samlad_kontrollfil.xlsx` (both tables plus `Sammanfattning`). These tables retain original source headers/values; excluded rows receive an extra reason column. The UI offers these three downloads plus the flagged, sample and uncertain-supplier workbooks. All use the same workbook serializer. Temporary pipeline files are removed after their bytes are collected.
 
 When supplier matching is available, review/cleaned/flagged/sample exports add matching fields and the sheets `Registerinformation`, `Leverantörsmatchning`, `Leverantörskandidater` and `Möjliga avtal`. Added fields avoid original-column collisions with `_` prefixes. An unusable supplied register yields availability/issue metadata instead of match results. Excluded exports are not supplier-enriched.
+
+Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsöversikt`, `Exkluderingsregler`, `Urvalsmetod` and `Urvalspositioner`. Each export row maps to its exact source occurrence via export sheet/row, parsed source position, source Excel row, worksheet, filename and SHA-256. Combined workbooks distinguish included and excluded export sheets. Matching/contract evidence is subset to each report's population; complete-run summary and sampling evidence remain explicitly run-level context. Register metadata records the source name/kind/hash/date.
+
+`src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
+
+The visual overview in `src/ui_run_summary.py` precedes the detail views. It presents compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, individual detection statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, control, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. `NOT_CHECKED`, `ERROR`, `FLAGGED` and `PASS` remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, control explanations and exports remain available under Details and review. Temporary view filters do not change dashboard counts or the sample.
 
 Strings, including formula expressions, are exported literally. Decimal values are written as exact text; Excel styling and arbitrary Python types are not preserved. Unsupported values or cell-size limits can stop export without changing the source.
 
 Known evidence limitations:
 
-- CLI workbooks do not persist the excluded table or its reasons, although `PipelineResult` retains them.
 - Detailed validation and nonflagged detection results remain in memory/UI; the checks export is not a complete record of `ERROR`, `NOT_CHECKED` or `PASS` results. Summary counts are not their explanations.
 - No formal reviewer identity/sign-off or persistent comment workflow is implemented (Q6/Q7).
 
@@ -273,9 +296,9 @@ The current Excel reader creates unique zero-based table indexes. Mapping, filte
 
 Current limitations mean full M6 completion must not be claimed:
 
-- Ingestion does not retain source-file identity, selected-sheet metadata or the detected header offset in the result model; table positions are not Excel row numbers.
 - Detection `row_position` in per-row presence checks is local to the verification, whereas validation positions are relative to the parsed source table.
-- Workbooks omit DataFrame indexes. An explicit `source_row_position` is added to supplier-enriched rows only when matching is available; excluded rows and exports without usable matching lack that field.
-- The CLI and persisted-check limitations in section 14 also prevent complete exported population/evidence accounting.
+- Detailed validation and all nonflagged detection findings are not yet persisted; the run evidence does not replace them.
+
+Source tables remain unchanged; separate provenance sheets now carry exact occurrence/Excel-row linkage in pipeline/UI exports even without a register and for excluded rows. The source hash identifies the supplied bytes, not authenticity or completeness relative to Proceedo.
 
 Q3 concerns the required traceability information and presentation. These limitations are deferred technical work, not permission to weaken source preservation or invent business identity rules.
