@@ -279,6 +279,8 @@ Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsövers
 
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 
+The visual overview in `src/ui_run_summary.py` precedes the detail views. It presents compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, individual detection statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, control, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. `NOT_CHECKED`, `ERROR`, `FLAGGED` and `PASS` remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, control explanations and exports remain available under Details and review. Temporary view filters do not change dashboard counts or the sample.
+
 Strings, including formula expressions, are exported literally. Decimal values are written as exact text; Excel styling and arbitrary Python types are not preserved. Unsupported values or cell-size limits can stop export without changing the source.
 
 Known evidence limitations:

@@ -237,6 +237,9 @@ def test_dashboard_sampling_and_register_remove_restore():
     app.button[0].click().run()
     assert not app.exception
     assert {m.label: m.value for m in app.metric} == {
+        'Källpopulation · rader': '100', 'Kvarvarande · rader': '100',
+        'Exkluderade · rader': '0', 'Flaggade · verifikationer': '0',
+        'Manuellt urval · verifikationer': '5',
         'Verifikationer i urvalspopulationen': '100', 'Stickprovsintervall': '1 av 20',
         'Valda verifikationer': '5', 'Rader i stickprovet': '5'}
     assert app.session_state['review'].registry_source.kind == 'uploaded'

@@ -74,7 +74,7 @@ def change_registry(enabled, reset_upload=False):
 
 
 def show_overview(result, flagged, errors):
-    st.subheader('Analysöversikt')
+    st.subheader('Kontrollresultat och förklaringar')
     st.caption('En samlad bild av det analyserade underlaget.')
     checks = pd.DataFrame([
         {'Verifikation': str(detection.verification_id),
@@ -198,12 +198,14 @@ def show_result(review):
     for message in result.filtering.todos:
         if message not in filter_column_errors(result.standardized_data):
             st.warning(message)
-    show_dashboard_kpis(result)
     show_run_summary(result)
     if result.supplier_analysis is not None:
         registry = result.supplier_analysis.registry
         st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
                 (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
+    st.divider()
+    st.subheader('Detaljer och granskning')
+    show_dashboard_kpis(result)
     review_tab, excluded_tab, controls, reports, manual = st.tabs(
         ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
     kept, excluded = review_tables(result.original_data, result.filtering)
