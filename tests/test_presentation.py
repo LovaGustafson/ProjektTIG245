@@ -41,7 +41,7 @@ def test_context_preserves_conflicting_values_without_aggregation():
 
 def test_enriched_report_and_summary_roundtrip(tmp_path):
     review = upload(pd.DataFrame({'Vernr': ['001'], 'Vrad': [1], 'Verdatum': ['2026-09-03'],
-                                   'Huvudtext': ['Testfaktura'], 'Utfall': [10], 'Konto': ['4000']}))
+                                   'Huvudtext': ['Testfaktura Slutk123'], 'Utfall': [10], 'Konto': ['4000']}))
     result = review.result
     checks = [CheckResult('001', 'required_fields_check', CheckStatus.FLAGGED,
                           f'Missing required information: {field}', field=field)
@@ -54,6 +54,9 @@ def test_enriched_report_and_summary_roundtrip(tmp_path):
     exported = read_excel(paths['flagged_invoices'], sheet_name='checks')
     assert len(exported) == 2
     assert exported.header_text.tolist() == ['Testfaktura'] * 2
+    exported_rows = read_excel(paths['flagged_invoices'], sheet_name='rows')
+    assert exported_rows.header_text.tolist() == ['Testfaktura']
+    assert result.verifications[0].rows.header_text.tolist() == ['Testfaktura Slutk123']
     assert exported.verification_date.tolist() == ['2026-09-03'] * 2
     assert exported.code.isna().all()
     assert exported.message.tolist() == ['Obligatorisk information saknas: signature.',

@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui_support import display_dataframe
+from src.presentation import customer_facing_value
 from src.ui_navigation import select_drilldown
 from src.supplier_matching.contract_period import ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE
 
@@ -74,6 +75,8 @@ def supplier_review_table(kept, analysis):
             values = values.map(STATUS_LABELS)
         elif field == 'registry_date_warning':
             values = values.map({True: '🟣 Registerdatumvarning', False: '—'})
+        elif field == 'supplier_text_raw':
+            values = values.map(lambda value: customer_facing_value(field, value))
         display[label] = values.tolist()
     return display
 
@@ -85,6 +88,7 @@ def show_supplier_detail(analysis, source_position):
     if matches.empty:
         return
     row = matches.iloc[0]
+    supplier_text = customer_facing_value('supplier_text_raw', row['supplier_text_raw'])
     st.subheader(STATUS_LABELS[row['supplier_match_status']])
     colors = {'STRONG_MATCH': 'green', 'AMBIGUOUS_MATCH': 'yellow',
               'NO_MATCH': 'orange', 'SUPPLIER_NOT_IDENTIFIED': 'gray'}
@@ -94,7 +98,7 @@ def show_supplier_detail(analysis, source_position):
         st.caption('Leverantören är starkt identifierad i aktuellt register. '
                    'Detta bedömer inte fakturans riktighet eller om köpet omfattas av avtal.')
     elif row['supplier_match_status'] == 'NO_MATCH':
-        st.text('Sökt leverantörsnamn: ' + str(row['supplier_text_raw']))
+        st.text('Sökt leverantörsnamn: ' + str(supplier_text))
     elif row['supplier_match_status'] == 'AMBIGUOUS_MATCH':
         st.warning('Manuell granskning krävs. Jämför kandidaterna och matchningsorsakerna nedan; '
                    'ingen leverantör har valts automatiskt.')
@@ -104,7 +108,7 @@ def show_supplier_detail(analysis, source_position):
         st.warning(row['registry_date_message'])
     else:
         st.caption('Ingen registerdatumvarning: transaktionen är inte senare än registerutdraget.')
-    details = [('Leverantör från Huvudtext', row['supplier_text_raw']),
+    details = [('Leverantör från Huvudtext', supplier_text),
                ('Normaliserad jämförelsetext', row['supplier_normalized']),
                ('Matchad leverantör', row['matched_supplier_name']),
                ('Organisationsnummer', row['matched_organization_number']),

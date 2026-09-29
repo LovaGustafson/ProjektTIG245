@@ -130,7 +130,8 @@ def test_uncertain_export_has_all_non_strong_occurrences_and_no_excluded_rows():
         assert rows.source_row_position.tolist() == [1, 2, 3, 5]
         assert rows.supplier_match_status.tolist() == ['AMBIGUOUS_MATCH', 'NO_MATCH',
                                                        'SUPPLIER_NOT_IDENTIFIED', 'SUPPLIER_NOT_IDENTIFIED']
-        assert rows.header_text.iloc[0] == data.Huvudtext.iloc[1]
+        assert rows.header_text.iloc[0] == 'Input interiör'
+        assert review.result.standardized_data.header_text.iloc[1] == data.Huvudtext.iloc[1]
         assert rows.header_text_normalized.iloc[0] == 'Input interiör'
         assert rows.supplier_match_reason.notna().all()
         info = pd.read_excel(book, 'Registerinformation')

@@ -135,7 +135,7 @@ def show_deviations(result, flagged):
             if check.status == 'FLAGGED':
                 st.text(check_message(check))
         st.markdown('#### Tillhörande verifikationsrader')
-        st.caption('Samtliga rader för den valda verifikationen. Värdena visas utan ändringar.')
+        st.caption('Samtliga rader för den valda verifikationen. Numrerade Slutk-markörer döljs i Huvudtext.')
         for verification in result.verifications:
             if verification.verification_id == detection.verification_id:
                 st.dataframe(display_dataframe(verification.rows), column_config=COLUMN_LABELS,
@@ -303,7 +303,7 @@ def show_review_table(result, kept, *, key):
     filtered = filter_panel(kept, view=key, selection_key=key)
     selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
                              key=key, on_select='rerun', selection_mode='single-row')
-    st.caption('Markera en rad i tabellen för att visa källvärden och valideringsvarningar.')
+    st.caption('Markera en rad i tabellen för att visa radens uppgifter och valideringsvarningar.')
     if selection.selection.rows and selection.selection.rows[0] < len(filtered.positions):
         source_position = kept.index[filtered.positions[selection.selection.rows[0]]]
         show_review_row(result, result.filtering.cleaned_data.index.get_loc(source_position))
@@ -322,7 +322,8 @@ def show_review_row(result, position):
             st.caption('Inga valideringsvarningar har rapporterats för raden.')
         source_position = result.filtering.cleaned_data.index[position]
         show_supplier_detail(result.supplier_analysis, source_position)
-        st.caption('Alla tillgängliga originalfält visas oförändrade.')
+        st.caption('Alla tillgängliga fält visas. Numrerade Slutk-markörer döljs i Huvudtext; '
+                   'originalvärdet bevaras internt.')
         # Vertical text avoids truncating long source texts inside table cells.
         for name, value in fields.itertuples(index=False, name=None):
             st.text(str(name))

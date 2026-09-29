@@ -1,8 +1,34 @@
 """Shared Swedish presentation of existing evidence; no business decisions."""
 import pandas as pd
 from src.mapping.column_mapper import COLUMN_MAPPING
+from src.supplier_matching.extraction import FINAL_BOOKING, normalize_header_text
 
 SOURCE_NAMES = {internal: source for source, internal in COLUMN_MAPPING.items()}
+
+
+def _is_header_or_supplier_text(field):
+    name = field.strip() if isinstance(field, str) else field
+    is_header = name in ('Huvudtext', 'header_text')
+    # Supplier evidence receives underscore prefixes on source-column collisions.
+    is_supplier = isinstance(name, str) and name.lstrip('_') == 'supplier_text_raw'
+    return is_header or is_supplier
+
+
+def customer_facing_value(field, value):
+    """Hide numbered Slutk markers in header/supplier text, never in source data."""
+    if _is_header_or_supplier_text(field) and isinstance(value, str) and FINAL_BOOKING.search(value):
+        return normalize_header_text(value)
+    return value
+
+
+def customer_facing_rows(data):
+    """Return a presentation copy, including duplicate source column labels."""
+    display = pd.DataFrame(data).copy(deep=True)
+    for position, field in enumerate(display.columns):
+        if _is_header_or_supplier_text(field):
+            display.isetitem(position, display.iloc[:, position].map(
+                lambda value: customer_facing_value(field, value)))
+    return display
 
 
 def validation_message(error):
@@ -50,7 +76,7 @@ def summary_counts(data, validation, results):
 
 
 def context_fields(rows):
-    """Keep all distinct supplied values, without choosing a canonical header/date.
+    """Keep distinct display values, without choosing a canonical header/date.
 
     Multiple values are displayed on separate lines; missing fields stay blank.
     Complete original rows remain available separately.
@@ -59,7 +85,7 @@ def context_fields(rows):
     for field in ('verification_date', 'header_text', 'amount', 'account'):
         values = []
         for position in range(len(rows)):
-            value = cell(rows, position, field)
+            value = customer_facing_value(field, cell(rows, position, field))
             if value is not None and str(value) not in [str(v) for v in values]:
                 values.append(value)
         output[field] = values[0] if len(values) == 1 else '\n'.join(map(str, values)) if values else None

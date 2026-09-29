@@ -8,6 +8,7 @@ import pyarrow as pa
 
 from src.output.report_generator import review_workbooks
 from src.presentation import context_fields, validation_records, validation_message
+from src.presentation import customer_facing_rows, customer_facing_value
 from src.pipeline import PipelineResult, run_pipeline
 from src.filtering.filter_engine import DEFAULT_SETTINGS_PATH
 from src.ingestion.registry_source import resolve_registry_source, RegistrySource
@@ -91,9 +92,10 @@ def display_dataframe(data) -> pd.DataFrame:
 
     Keep supported column types. Only columns Arrow cannot represent are
     rendered as strings; missing values remain missing rather than literal text.
+    Header/supplier text hides numbered Slutk markers on this copy.
     This copy must never be used as analysis or export input.
     """
-    display = pd.DataFrame(data).copy(deep=True)
+    display = customer_facing_rows(data)
     for position in range(len(display.columns)):
         column = display.iloc[:, position]
         try:
@@ -125,7 +127,8 @@ def review_row_detail(result, selected_position):
     positions = [i for i, reason in enumerate(result.filtering.reasons) if not reason]
     source_position = positions[selected_position]
     row = result.original_data.iloc[source_position]
-    fields = pd.DataFrame({'Fält': list(row.index), 'Källvärde': list(row.values)})
+    fields = pd.DataFrame({'Fält': list(row.index), 'Källvärde': [
+        customer_facing_value(field, value) for field, value in row.items()]})
     warnings = [validation_message(error)
                 for error in result.validation.rows[source_position].validation_errors]
     return fields, warnings
