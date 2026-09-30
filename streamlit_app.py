@@ -188,7 +188,7 @@ def show_result(review):
     st.success('Analysen är klar. Granska resultatet i flikarna nedan.', icon=':material/task_alt:')
     # Keep incomplete/failed-control notices visible regardless of the active tab.
     if any(check.status == 'NOT_CHECKED' for r in result.detection_results for check in r.checks):
-        st.warning('Vissa kontroller kunde inte genomföras eftersom förutsättningarna ännu inte är bekräftade. '
+        st.warning('Vissa kontroller har inte bedömts. Öppna Ej kontrollerad under Detektionskontroller för registrerade orsaker. '
                    'Avsaknad av flaggor betyder inte att alla kontroller är godkända.', icon=':material/info:')
     if any(check.status == 'ERROR' for r in result.detection_results for check in r.checks):
         st.warning('Vissa kontroller avbröts med tekniska fel. Se Alla kontrollresultat under Kontroller.',

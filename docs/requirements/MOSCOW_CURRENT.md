@@ -1,6 +1,6 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-09-24
+Last updated: 2026-09-29
 
 This document contains the current customer requirements for the TIG245 prototype.
 
@@ -26,6 +26,14 @@ must also be removed from customer-facing Huvudtext and extracted-supplier text
 in UI tables/details and Excel reports. Original values remain available
 internally for M6 traceability. `Prelb`, standalone markers, `Slutkund AB` and
 invalid strings such as `Slutk123abc` retain their existing meaning and text.
+
+The priority-1 stakeholder feedback of 2026-09-29 confirms progressive disclosure
+in the analysis overview (M2/M4/M5/M6, C1–C3): open summary categories to read
+their meaning, actual recorded reasons and underlying source occurrences.
+Detection, supplier matching, contract-period comparisons, exclusions and sample
+populations must retain their existing results, counting units and business rules.
+Details, including exclusion reasons, are collapsed by default. Explanations must
+not disguise aggregation bugs or infer unrecorded reasons or business approval.
 
 ---
 

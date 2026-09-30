@@ -127,17 +127,17 @@ def test_kpi_click_restores_exact_card_rows_and_reset_on_rule_change_and_new_upl
     app.button(key='kpi_review').click().run()
     choose(app, 'kpi_review_rows', 'Konto')
     app.multiselect(key=key(app, 'kpi_review_rows', 'Konto', 'categories')).set_value(['6000']).run()
-    assert app.dataframe[0].value['Vernr'].tolist() == ['005']
+    assert next(table for table in app.dataframe if table.key == 'kpi_review_rows').value['Vernr'].tolist() == ['005']
     app.button(key='kpi_excluded').click().run()
     app.button(key='kpi_review').click().run()
     assert not app.exception
     # A fresh card click shows exactly its count, clearing only that view.
-    assert app.dataframe[0].value['Vernr'].tolist() == ['001', '005', '006']
+    assert next(table for table in app.dataframe if table.key == 'kpi_review_rows').value['Vernr'].tolist() == ['001', '005', '006']
     assert len(app.tabs[0].dataframe[0].value) == 3
     app.multiselect(key='excluded_types').unselect('KR01').run()
     assert not app.exception
     assert app.multiselect(key='vf:kpi_review_rows:columns').value == []
-    assert len(app.dataframe[0].value) == 4
+    assert len(next(table for table in app.dataframe if table.key == 'kpi_review_rows').value) == 4
     choose(app, 'review_rows', 'Konto')
     app.file_uploader[0].set_value(('new.xlsx', source(),
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).run()
