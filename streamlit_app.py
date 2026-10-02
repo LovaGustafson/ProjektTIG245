@@ -12,6 +12,8 @@ from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
 from src.ui_filter_panel import filter_panel, clear_ui_filters
 from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
 from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
+from src.ui_supplier_panel import show_supplier_scope
+from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_navigation import home, select_drilldown, active_drilldown
 from src.supplier_matching.settings import load_matching_settings, snapshot_date
 from src.ui_run_summary import show_run_summary
@@ -74,7 +76,7 @@ def change_registry(enabled, reset_upload=False):
 
 
 def show_overview(result, flagged, errors):
-    st.subheader('Kontrollresultat och förklaringar')
+    st.subheader('Granskningsresultat och förklaringar')
     st.caption('En samlad bild av det analyserade underlaget.')
     checks = pd.DataFrame([
         {'Verifikation': str(detection.verification_id),
@@ -82,6 +84,7 @@ def show_overview(result, flagged, errors):
          'Status': STATUS_LABELS.get(check.status, check.status),
          'Beskrivning': check_message(check)}
         for detection in result.detection_results for check in detection.checks
+        if check.status in ('FLAGGED', 'ERROR')
     ], columns=['Verifikation', 'Kontroll', 'Status', 'Beskrivning'])
     # Each card and its table use the same record set and unit (not invoice rows).
     analyzed = pd.DataFrame([
@@ -93,10 +96,9 @@ def show_overview(result, flagged, errors):
         'analyzed': ('Analyserade', analyzed, 'verifikationer'),
         'flagged': ('Flaggade', flagged, 'verifikationer'),
         'validation': ('Valideringsfel', errors, 'valideringsfel'),
-        'not_checked': ('Ej kontrollerade', checks[checks['Status'] == 'Ej kontrollerad'], 'kontroller'),
     }
     with st.container(key='kpi_grid'):
-        for column, (key, (label, data, unit)) in zip(st.columns(4), views.items()):
+        for column, (key, (label, data, unit)) in zip(st.columns(3), views.items()):
             column.button(f'**{len(data)}**  \n{label}', key='control_' + key, width='stretch',
                           help=f'Visa {unit}', on_click=select_drilldown,
                           args=('selected_control', key, 'control_' + key))
@@ -105,12 +107,10 @@ def show_overview(result, flagged, errors):
         label, data, unit = views[selected]
         active_drilldown(f'{label} ({unit})', 'control')
         show_filtered_table(data, view='control_' + selected)
-    with st.expander('Alla kontrollresultat'):
-        st.caption('Varje genomförd, ej genomförd eller avbruten kontroll visas med sin förklaring.')
-        if not checks.empty:
+    if not checks.empty:
+        with st.expander('Flaggningar och tekniska fel', expanded=False):
+            st.caption('Registrerade flaggningar och tekniska fel med sina befintliga förklaringar.')
             st.dataframe(display_dataframe(checks), hide_index=True, width='stretch')
-        else:
-            st.info('Det finns inga kontrollresultat att visa.')
 
 
 def show_deviations(result, flagged):
@@ -118,7 +118,7 @@ def show_deviations(result, flagged):
     st.caption('En verifikation kan omfatta flera rader och ha flera flaggningsorsaker.')
     flagged_results = [r for r in result.detection_results if r.flag_reasons]
     if not flagged_results:
-        st.info('Inga verifikationer har flaggats. Granska även valideringsfel och ej genomförda kontroller.')
+        st.info('Inga verifikationer har flaggats. Granska även valideringsfel och underlaget manuellt.')
         return
     display = flagged.drop(columns='reasons').copy()
     display['status'] = display['status'].replace(STATUS_LABELS)
@@ -186,12 +186,9 @@ def show_result(review):
     flagged = flagged_table(result)
     errors = validation_table(result)
     st.success('Analysen är klar. Granska resultatet i flikarna nedan.', icon=':material/task_alt:')
-    # Keep incomplete/failed-control notices visible regardless of the active tab.
-    if any(check.status == 'NOT_CHECKED' for r in result.detection_results for check in r.checks):
-        st.warning('Vissa kontroller har inte bedömts. Öppna Ej kontrollerad under Detektionskontroller för registrerade orsaker. '
-                   'Avsaknad av flaggor betyder inte att alla kontroller är godkända.', icon=':material/info:')
+    # Keep technical failures visible regardless of the active tab.
     if any(check.status == 'ERROR' for r in result.detection_results for check in r.checks):
-        st.warning('Vissa kontroller avbröts med tekniska fel. Se Alla kontrollresultat under Kontroller.',
+        st.warning('Vissa kontroller avbröts med tekniska fel. Se Flaggningar och tekniska fel under Kontroller.',
                    icon=':material/warning:')
     for message in filter_column_errors(result.standardized_data):
         st.error(message)
@@ -210,10 +207,11 @@ def show_result(review):
         ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
-        show_supplier_summary(result.supplier_analysis)
+        show_supplier_summary(result.supplier_analysis, result.supplier_view)
         st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
                    'Även rader med valideringsfel finns kvar för granskning.')
         show_review_table(result, kept, key='review_rows')
+        show_supplier_scope(result)
         show_deviations(result, flagged)
         with st.expander('Valideringsfel', expanded=not errors.empty):
             show_validation(errors)
@@ -226,14 +224,14 @@ def show_result(review):
         else:
             st.info('Leverantörsmatchning och separata avtalsperioder visas under Granskning. Avtalstrohet har inte kontrollerats; '
                     'vilket avtal fakturan avser behöver utredas.')
-        st.info('Attestkontroll – ej tillgänglig. Attestregister saknas.')
-        st.info('Kontroll av rätt attestant – ej tillgänglig. Kräver attestregister. Framtida funktion.')
         show_overview(result, flagged, errors)
     with reports:
         show_reports(review)
     with manual:
-        st.caption('Det befintliga manuella stickprovet, valt efter analysen. '
+        st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '
                    'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
+        if result.sampling_result is not None and result.sampling_result.shortfall_message:
+            st.warning(result.sampling_result.shortfall_message)
         # The reader supplies unique row indexes; grouping/sampling retain them.
         positions = [position for verification in result.manual_sample for position in verification.rows.index]
         sample = result.original_data.loc[positions].copy(deep=True)
@@ -295,7 +293,7 @@ def show_filtered_table(data, *, view):
 def show_review_table(result, kept, *, key):
     selected = st.session_state.get('selected_supplier') if key == 'review_rows' else None
     if selected and result.supplier_analysis and result.supplier_analysis.registry.available:
-        analysis = result.supplier_analysis
+        analysis = visible_supplier_analysis(result.supplier_analysis, result.supplier_view)
         label = list(analysis.summary())[SUPPLIER_VIEWS.index(selected)]
         active_drilldown(label, 'supplier')
         kept = kept.loc[kept.index.isin(supplier_positions(analysis, selected))]

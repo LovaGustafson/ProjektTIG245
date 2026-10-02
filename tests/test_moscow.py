@@ -79,7 +79,8 @@ def test_dynamic_reinclude_additional_type_reset_and_upload_change():
     assert app.button(key="kpi_review").label.split("**")[1] == '2'
     messages = [message.value for message in app.info]
     assert 'Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.' in messages
-    assert 'Attestkontroll – ej tillgänglig. Attestregister saknas.' in messages
+    assert ('Attestkontroll ej genomförd – kräver attestregister eller motsvarande behörighetsunderlag '
+            'som inte finns tillgängligt i prototypen.') in messages
     app.file_uploader[0].set_value(('second.xlsx', content(source().iloc[:1]), MIME)).run()
     assert not app.metric
     app.button[0].click().run()

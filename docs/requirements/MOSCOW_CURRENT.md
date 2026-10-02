@@ -1,6 +1,6 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-09-29
+Last updated: 2026-10-02
 
 This document contains the current customer requirements for the TIG245 prototype.
 
@@ -34,6 +34,27 @@ Detection, supplier matching, contract-period comparisons, exclusions and sample
 populations must retain their existing results, counting units and business rules.
 Details, including exclusion reasons, are collapsed by default. Explanations must
 not disguise aggregation bugs or infer unrecorded reasons or business approval.
+
+The 2026-10-02 UI clarification (C1–C3, W1 boundaries) removes the entire
+`Detektionskontroller` section and presentation of unassessed detection results,
+including their counters and detail rows. Show a short information box explaining
+that attestation was not checked because the prototype lacks an attestation
+register or equivalent authorization evidence. Existing flags, technical errors,
+validation, supplier matching, contract periods, sampling, filtering, backend
+results, other totals and exports are unchanged. This supersedes the earlier
+requirement to display detection-status drill-downs; contract-period evidence
+and its `NOT_CHECKED` semantics remain unchanged.
+
+The priority-2 request of 2026-09-30 changes M5/M6 sampling: at most one selected
+verification per supplier, with deterministic forward replacement and an explained
+shortfall rather than duplicate backfilling. The user explicitly confirmed existing
+normalized Huvudtext supplier names as fallback when strong identity is unavailable;
+verifications with missing or multiple identities remain outside the sample with
+evidence. Strong matches use the register organization number. No matching rule changes.
+For C1–C3, an isolated configurable supplier-view classification is authorized,
+with explicit confirmed entries and inspectable exclusions. The examples Apoteket,
+Securitas, Försörjningsförvaltningen and Kantarellen do not authorize new exclusions.
+An external-only sample is not confirmed; see [Q13](OPEN_QUESTIONS.md#q13--supplier-view-classification-and-external-only-sampling).
 
 ---
 
@@ -131,8 +152,10 @@ Status:
 - SELECTION IMPLEMENTED / CUSTOMER EVIDENCE REQUIREMENTS UNRESOLVED
 
 Confirmed rule and current behavior:
-- Every 20th eligible verification is selected for manual control.
-- The implementation selects positions 20, 40, 60, etc. in first-appearance order after base filtering and grouping, following analysis of all eligible verifications.
+- The target remains floor(grouped population / 20), starting from nominal positions 20, 40, 60, etc. in first-appearance order after base filtering, grouping and analysis.
+- The 2026-09-30 change prevents repeated supplier keys/normalized names. At an unusable or repeated supplier, selection continues forward to the next valid unique supplier. No previously passed position is revisited; the nominal interval positions stay fixed.
+- Supplier keys use organization numbers from strong matches, otherwise the existing normalization of supplier names extracted from Huvudtext. All rows in a selected verification must have one consistent key; missing/multiple identities are explained outside the sample. Motp is never used.
+- Insufficient candidates produce a smaller sample with target/actual counts and recorded reasons. No duplicate backfilling is allowed. This is sample selection, not source-occurrence deduplication.
 - Selection is at verification level and independent of flags; selected groups retain their rows. The configured interval is 20.
 - Changes to base filtering, grouping or ordering can change the sample; temporary UI view filters do not.
 - The selection criteria must be transparent and reproducible.
@@ -307,7 +330,7 @@ The future work instruction should, when the relevant rules are sufficiently con
 7. How invalid or incomplete records are handled.
 8. How possible duplicates are handled once the customer duplicate rule is confirmed.
 9. How the review population is created.
-10. How every 20th verification is selected.
+10. How nominal every-20th positions, supplier uniqueness and forward replacements select the sample.
 11. How flagged records are reviewed.
 12. How exported review material is generated and used.
 13. How traceability back to the supplied source data is maintained.

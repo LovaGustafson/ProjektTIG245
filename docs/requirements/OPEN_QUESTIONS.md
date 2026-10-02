@@ -29,7 +29,7 @@ Status: Open
 - What evidence must document selection of every 20th eligible verification: eligible population, ordering, applied exclusions, interval, selected positions or other information?
 - Where should that evidence appear, and what must a reviewer retain to reproduce or verify the sample?
 
-The 2026-09-24 feature package now records population, ordering, exclusions, interval and selected source positions in UI/export. Customer requirements for further evidence, retention and approval remain open. The interval is already confirmed; this question does not authorize changing the selection method.
+The 2026-09-24 feature package records population, ordering, exclusions, interval and selected source positions in UI/export. The explicit 2026-09-30 priority-2 request adds supplier uniqueness, forward replacements, target/actual counts, per-verification decisions and per-row identity evidence. The user confirmed normalized extracted names as fallback and keeping missing/multiple identities outside the sample. Customer requirements for further evidence, retention and approval remain open. The interval is already confirmed; this question alone does not authorize changing the selection method.
 
 ## Q3 — Source-occurrence traceability
 
@@ -150,3 +150,19 @@ Status: Open — requested during implementation of the 2026-09-24 feature packa
 The implementation evaluates unambiguous ordinary periods strictly before/inside/after their bounds. Conflicting end dates, final-date-only records and unconfirmed boundary-day cases remain `NOT_CHECKED` with preserved date evidence. Configuration options do not confirm a rule. Every candidate contract remains visible; no purchase-to-contract applicability or compliance conclusion is inferred.
 
 Deployment input still needed: the local source path for the default Koncerninköp register. No real register file was available in the repository data folders during implementation; the default path is configurable and missing files remain explicitly unavailable.
+
+## Q13 — Supplier-view classification and external-only sampling
+
+Related requirements: M5, M6, C1–C3
+
+Status: Open — priority-2 stakeholder request, 2026-09-30
+
+- Which exact supplier organization numbers or extracted names are confirmed as internal, external or irrelevant to the supplier-matching view? Supply a reason for each entry. Apoteket, Securitas, Försörjningsförvaltningen and Kantarellen are examples, not an approved list.
+- Does a future manual sample need to contain only external suppliers? This has **not** been confirmed; view classification must not change sampling eligibility.
+- Would a future authoritative internal/external field or register be supplied, and what does it mean? No such field is currently documented. Motp is not supplier identity or a classification signal.
+
+The implemented `supplier_view_rules` list is empty by default. Only explicitly
+confirmed entries apply; unclassified and conflicting cases remain visible.
+Existing exact base exclusions for Försörjningsförvaltning, Fastighetstöd and mall
+remain unchanged and separate. The additional trailing `en` is not an authorized alias.
+See [priority-2 audit](PRIORITY2_AUDIT.md) for evidence and boundaries.

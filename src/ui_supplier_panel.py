@@ -5,6 +5,8 @@ import streamlit as st
 from src.ui_support import display_dataframe
 from src.presentation import customer_facing_value
 from src.ui_navigation import select_drilldown
+from src.ui_overview_details import source_rows
+from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.supplier_matching.contract_period import ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE
 
 STATUS_LABELS = {
@@ -17,6 +19,30 @@ STATUS_LABELS = {
 SUPPLIER_VIEWS = ('all', *STATUS_LABELS, 'date_warning')
 
 
+def show_supplier_scope(result):
+    classification = result.supplier_view
+    if classification is None:
+        return
+    excluded = classification.loc[classification['excluded_from_view'].astype(bool)]
+    st.caption(f'Interna/ej relevanta leverantörer exkluderade från denna vy: {len(excluded)} källrader. '
+               'Avser endast bekräftade vyregler. Oklassificerad betyder inte extern. '
+               'Hela granskningsunderlaget, matchningsresultaten och stickprovet bevaras.')
+    with st.expander('Vyavgränsning – klassificering, exkluderade poster och orsaker', expanded=False):
+        if excluded.empty:
+            st.info('Inga källrader har exkluderats av bekräftade leverantörsvyregler.')
+        else:
+            st.dataframe(display_dataframe(excluded), hide_index=True, width='stretch')
+            st.dataframe(display_dataframe(source_rows(result, excluded['source_row_position'])),
+                         hide_index=True, width='stretch')
+        with st.expander('Klassificering för alla kvarvarande källrader', expanded=False):
+            st.dataframe(display_dataframe(classification), hide_index=True, width='stretch')
+        st.caption('Basexkluderingar redovisas separat under Varför exkluderades rader? '
+                   'Regler för denna vy finns i supplier_view_rules. Listan är tom tills '
+                   'uttryckliga regler med motivering har bekräftats.')
+    if classification['classification'].eq('CONFLICT').any():
+        st.warning('Motstridiga leverantörsvyregler finns. Berörda rader visas och kan granskas i klassificeringen.')
+
+
 def supplier_positions(analysis, key):
     rows = analysis.rows
     if key == 'date_warning':
@@ -26,9 +52,11 @@ def supplier_positions(analysis, key):
     return rows['source_row_position'].tolist()
 
 
-def show_supplier_summary(analysis):
+def show_supplier_summary(analysis, classification=None):
     if analysis is None:
         return
+    full_analysis = analysis
+    analysis = visible_supplier_analysis(analysis, classification)
     st.subheader('Leverantörsmatchning mot Koncerninköp')
     for issue in analysis.registry.issues:
         st.warning(issue)
@@ -50,10 +78,11 @@ def show_supplier_summary(analysis):
     if unknown_dates:
         st.warning(f'{unknown_dates} rader kunde inte datumkontrolleras. Se raddetaljer.')
     st.markdown('**Avtalsperioder vid verifikationsdatum**')
-    counts = analysis.contracts['contract_period_result'].value_counts()
+    counts = full_analysis.contracts['contract_period_result'].value_counts()
     for label in (ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE):
         st.text(f'{label}: {int(counts.get(label, 0))} avtalsjämförelser')
-    st.caption('Varje registeravtal jämförs separat med källradens datum. Flera avtal kan finnas per rad. '
+    st.caption('Avtalsjämförelserna avser hela körningen, oberoende av leverantörsvyn. '
+               'Varje registeravtal jämförs separat med källradens datum. Flera avtal kan finnas per rad. '
                'En aktiv period bevisar inte att köpet omfattas av avtalet. '
                'Ej verifierbara perioder är inte konstaterade avvikelser.')
 
@@ -66,6 +95,7 @@ def supplier_review_table(kept, analysis):
     for field, label in [('supplier_match_status', 'Leverantörsträff'),
                          ('supplier_text_raw', 'Extraherad leverantör'),
                          ('matched_supplier_name', 'Matchad avtalsleverantör'),
+                         ('supplier_match_reason', 'Orsak'),
                          ('contract_count', 'Antal möjliga avtal'),
                          ('registry_date_warning', 'Äldre register än transaktion')]:
         while label in display.columns:
@@ -77,6 +107,13 @@ def supplier_review_table(kept, analysis):
             values = values.map({True: '🟣 Registerdatumvarning', False: '—'})
         elif field == 'supplier_text_raw':
             values = values.map(lambda value: customer_facing_value(field, value))
+        elif field == 'matched_supplier_name':
+            # Preserve the engine's ranking; displaying a candidate does not select an identity.
+            candidates = analysis.candidates.groupby('source_row_position', sort=False).head(1)
+            names = candidates.set_index('source_row_position')['supplier_name'].reindex(kept.index)
+            names = names.map(lambda name: f'{name} (kandidat)' if pd.notna(name) else name)
+            ambiguous = evidence['supplier_match_status'].eq('AMBIGUOUS_MATCH')
+            values = values.where(~ambiguous, names).fillna('Ingen kandidat identifierad')
         display[label] = values.tolist()
     return display
 

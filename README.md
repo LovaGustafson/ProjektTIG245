@@ -212,12 +212,18 @@ av alla validerings- och kontrollfynd återstår; se PROJECT_SPEC.md avsnitt 15.
 ## Manuellt urval, avtalsperioder och nya exporter
 
 Körningsöversikten visar verkliga radantal, exkluderingsorsaker, ej grupperbara
-rader, flaggade verifikationer och urvalspopulation. Stickprovet väljer var
+rader, flaggade verifikationer och urvalspopulation. Stickprovet utgår från var
 20:e kvarvarande **verifikation**, i ordningen för första förekomst efter
-basfiltrering/gruppering. Alla verifikationer analyseras först; flaggning påverkar
-inte urvalet. 100 valbara verifikationer ger fem valda verifikationer, med alla
-deras kvarvarande rader. `manual_sample.xlsx` exporteras separat. Bladen
-**Urvalsmetod** och **Urvalspositioner** dokumenterar urval och ordning.
+basfiltrering/gruppering, med högst en vald verifikation per leverantör. Vid
+upprepad eller saknad/flera leverantörsidentiteter söker det framåt till nästa
+giltiga kandidat. Organisationsnummer från stark träff används i första hand;
+annars används befintligt normaliserat leverantörsnamn från Huvudtext. Motp används inte.
+Alla verifikationer analyseras först; flaggning påverkar inte urvalet.
+100 grupper ger ett mål på fem valda verifikationer, men antalet kan bli mindre
+om framåtsökningen inte hittar tillräckligt många unika giltiga leverantörer.
+UI/export visar då varför; dubletter fyller aldrig återstående platser.
+`manual_sample.xlsx` exporteras separat. **Urvalsmetod**, **Urvalspositioner**,
+**Urvalsbeslut** och **Urvalsidentiteter** dokumenterar metod, ersättningar och källrader.
 
 `Slutk123`/`Slutk 123` känns igen utan hänsyn till versaler. Numrerade markörer
 och extra blanksteg tas bort i jämförelsetexten; originalets Huvudtext bevaras.
@@ -225,6 +231,12 @@ Interna uttrycken **Försörjningsförvaltning**, **Fastighetstöd** och **mall*
 exkluderas med orsak. Hela leverantörsuttrycket måste stämma efter jämförelse
 av skiftläge/blanksteg; delsträngar och ungefärliga namn exkluderas inte.
 Dessa basfilter kan ändra stickprovet. Exkluderade rader finns i UI/export.
+
+`supplier_view_rules` är en separat, tom konfigurationslista för senare bekräftade
+klassificeringar. Den ändrar endast leverantörsvyn och dess kort/detaljer, med
+synligt exkluderat antal, orsaker och källrader. Oklassificerad betyder inte extern.
+Matchning, basfiltrering, hela granskningsunderlaget och stickprovet påverkas inte.
+Se [audit och konfigurationsformat](docs/requirements/PRIORITY2_AUDIT.md).
 
 Varje avtalsrad för en starkt identifierad leverantör får en separat jämförelse
 mot verifikationsdatumet: före, inom eller efter perioden, alternativt ej
@@ -284,8 +296,11 @@ förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
   inte som verifikationer. Slutlig hantering kräver verksamhetsbeslut.
 - Konton normaliseras vid filterjämförelsen (tal, text och omgivande blanksteg).
   Valideringen accepterar även heltaliga Excel-tal enligt ovan. Originalvärden behålls.
-- Valideringsdetaljer och samtliga kontrollresultat finns i UI/minnesresultatet;
-  de exporteras inte fullständigt. CLI skapar rensat underlag, flaggningar,
+- Valideringsdetaljer, flaggningar och tekniska fel visas i UI:t. Samtliga
+  kontrollresultat bevaras i minnet; de exporteras inte fullständigt.
+  Ej genomförda detektionskontroller och deras totalsiffror visas inte i UI:t.
+  En informationsruta förklarar att attestkontroll kräver underlag som prototypen saknar.
+  CLI skapar rensat underlag, flaggningar,
   stickprov, osäkra leverantörsträffar, exkluderade rader/orsaker och körningssammanfattning.
   Streamlit erbjuder dessutom exporter med ursprungliga kolumnrubriker.
 - `code` i flaggrapporten är tomt: `check_type` identifierar kontrollen men är
@@ -298,7 +313,7 @@ förklaring och inga fakturavärdesfel. Saknat Vernr på en faktisk transaktion
 ## Configuration and pending decisions
 
 `config/settings.yaml` records the confirmed account exclusions (`7698`, `7699`)
-and `manual_sample_interval: 20` for the confirmed every-20th eligible-verification rule.
+and `manual_sample_interval: 20` for the nominal every-20th positions with supplier uniqueness and forward replacement.
 `excluded_verification_types` contains the existing 42 standard exclusions;
 approval/evidence for changes to selections remains Q8.
 `required_fields` remains `null`: **TODO / awaiting business confirmation**.
@@ -309,11 +324,12 @@ row-validation fields already defined in the specification: `verification_id`,
 
 AK must also confirm field meanings, the internal supplier ID mapping and
 attestation rules. The new name-based prototype uses Huvudtext, never
-`counterparty`, for supplier candidates. Sampling selects positions 20, 40, 60,
-etc. in first-appearance order after base filtering/grouping and analysis of
-all eligible verifications, independently of detection flags. Complete retained
-verification groups are selected. The interval is confirmed; only the required
-sampling evidence/documentation remains open (Q2).
+`counterparty`, for supplier candidates. Sampling starts from positions 20, 40, 60,
+etc. in first-appearance order after base filtering/grouping and analysis,
+independently of detection flags. Duplicate or unusable supplier identities trigger
+forward replacement; complete retained groups are selected and shortfalls explained.
+Further evidence/retention requirements remain Q2. The confirmed internal/external
+view list and whether a future sample should be external-only remain Q13.
 
 ## Data handling
 

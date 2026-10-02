@@ -124,13 +124,11 @@ def test_detection_links_local_positions_and_keeps_statuses_separate(tmp_path):
     assert reason_counts(checks, ['check_type', 'field', 'reason']).Antal.sum() == 2
     assert result.summary.check_status_counts == {'PASS': 3, 'NOT_CHECKED': 2, 'FLAGGED': 1, 'ERROR': 1}
     app = overview_app(result)
-    not_checked = expander(app, 'Ej kontrollerad (NOT_CHECKED)')
-    shown = evidence_table(not_checked, 'source_row_positions')
-    assert shown.status.tolist() == ['NOT_CHECKED'] * 2
-    assert shown.reason.tolist() == checks.reason.tolist()
-    assert any('inte PASS eller godkänt' in m.value for m in not_checked.markdown)
-    passed = evidence_table(expander(app, 'Utan flagga (PASS)'), 'source_row_positions')
-    assert passed.status.tolist() == ['PASS'] * 3
+    assert not any('kontrollresultat' in e.label.lower() for e in app.expander)
+    assert not any('check_type' in table.value for table in app.dataframe)
+    # Rendering no longer exposes control placeholders, but preserves their evidence.
+    pd.testing.assert_frame_equal(detection_details(result, 'NOT_CHECKED')[0], checks)
+    assert result.summary.check_status_counts == {'PASS': 3, 'NOT_CHECKED': 2, 'FLAGGED': 1, 'ERROR': 1}
 
 
 def test_invalid_detection_position_is_not_mistaken_for_source_position(review):
@@ -153,8 +151,9 @@ def test_metrics_exclusion_overlap_and_sample_use_existing_populations(review):
     assert result.summary.excluded_rows == 1
     assert result.summary.eligible_verifications == 40
     assert result.summary.strong_supplier_rows == 39
-    assert result.summary.sampled_verifications == 2
-    assert result.summary.sampled_rows == 2
+    assert result.summary.sampled_verifications == 1  # Repeated strongly matched supplier.
+    assert result.summary.sampled_rows == 1
+    assert result.sampling_result.target_size == 2
     for rule in result.summary.exclusion_counts:
         rows = exclusion_details(result, rule)
         assert rows.source_row_position.tolist() == [0]
@@ -165,10 +164,10 @@ def test_metrics_exclusion_overlap_and_sample_use_existing_populations(review):
     assert len(rows) == 42  # Grouped rows: excludes the ungrouped occurrence.
     assert groups.iloc[0].source_row_positions == [1, 2, 10]
     selected, sampled = verification_details(result, 'selected')
-    assert selected.population_position.tolist() == [20, 40]
+    assert selected.population_position.tolist() == [20]
     assert sampled.source_row_position.tolist() == result.sampling_evidence.source_row_position.tolist()
     remaining, _ = verification_details(result, 'remaining')
-    assert len(remaining) == 38
+    assert len(remaining) == 39
     assert 6 not in rows.source_row_position.tolist()
     assert 6 in supplier_details(result, 'STRONG_MATCH')[0].source_row_position.tolist()
 
@@ -177,6 +176,8 @@ def test_ui_progressive_disclosure_and_preserved_results(review):
     before = deepcopy(review.result)
     downloads = dict(review.downloads)
     app = overview_app(review.result)
+    assert not any('Detektionskontroller' in item.value for item in app.markdown)
+    assert not any('check_type' in table.value for table in app.dataframe)
     assert all(not e.proto.expanded for e in app.expander)
     exclusions = expander(app, 'Varför exkluderades rader?')
     assert len(exclusions.get('vega_lite_chart')) == 1

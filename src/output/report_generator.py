@@ -15,7 +15,7 @@ from src.models.result import CheckResult
 from src.models.verification import Verification
 from src.supplier_matching.analysis import enrich_rows
 from src.supplier_matching.extraction import normalize_header_text
-from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION
+from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_METHOD, SAMPLE_IDENTITY
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -72,7 +72,8 @@ def uncertain_supplier_rows(data, analysis):
     return result
 
 
-def audit_sheets(data, *, source_context=None, run_summary=None, sampling_evidence=None, table_name='rows'):
+def audit_sheets(data, *, source_context=None, run_summary=None, sampling_evidence=None, table_name='rows',
+                 sampling_result=None, supplier_view=None):
     sheets = {}
     if source_context is not None:
         header = source_context.get('source_header_row')
@@ -90,13 +91,21 @@ def audit_sheets(data, *, source_context=None, run_summary=None, sampling_eviden
                                                 columns=['Regel', 'Antal träffade källrader'])
         sheets['Urvalsmetod'] = pd.DataFrame([{
             'Population': SAMPLE_POPULATION, 'Ordning': SAMPLE_ORDER,
+            'Metod': SAMPLE_METHOD, 'Leverantörsunikhet': SAMPLE_IDENTITY,
             'Intervall': run_summary.sample_interval,
             'Antal verifikationer i populationen': run_summary.eligible_verifications,
             'Antal valda verifikationer': run_summary.sampled_verifications,
             'Antal valda rader': run_summary.sampled_rows,
+            'Önskat antal verifikationer': sampling_result.target_size if sampling_result is not None else None,
+            'Förklaring till mindre stickprov': sampling_result.shortfall_message if sampling_result is not None else None,
         }])
     if sampling_evidence is not None:
         sheets['Urvalspositioner'] = sampling_evidence
+    if sampling_result is not None:
+        sheets['Urvalsbeslut'] = sampling_result.decisions
+        sheets['Urvalsidentiteter'] = sampling_result.identity_rows
+    if supplier_view is not None:
+        sheets['Leverantörsvy'] = supplier_view
     return sheets
 
 
@@ -136,6 +145,8 @@ def generate_reports(
     sampling_evidence=None,
     original_data=None,
     filtering=None,
+    sampling_result=None,
+    supplier_view=None,
 ) -> dict[str, Path]:
     """Export review workbooks and return their paths keyed by report name.
 
@@ -172,7 +183,8 @@ def generate_reports(
     uncertain_rows = uncertain_supplier_rows(cleaned_data, supplier_analysis)
     def audit(data, table_name='rows'):
         return audit_sheets(data, source_context=source_context, run_summary=run_summary,
-                            sampling_evidence=sampling_evidence, table_name=table_name)
+                            sampling_evidence=sampling_evidence, table_name=table_name,
+                            sampling_result=sampling_result, supplier_view=supplier_view)
     checks = []
     for check in flagged_checks:
         record = asdict(check)
@@ -247,7 +259,7 @@ def review_summary(original_data, filtering):
 
 
 def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_summary=None,
-                     source_context=None, sampling_evidence=None):
+                     source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None):
     review, excluded = review_tables(original_data, filtering)
     review = enrich_rows(review, supplier_analysis)
     counts = review_summary(original_data, filtering)
@@ -257,7 +269,8 @@ def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_su
         counts.update(run_summary.counts())
     def audit(data, table_name):
         return audit_sheets(data, source_context=source_context, run_summary=run_summary,
-                            sampling_evidence=sampling_evidence, table_name=table_name)
+                            sampling_evidence=sampling_evidence, table_name=table_name,
+                            sampling_result=sampling_result, supplier_view=supplier_view)
     review_audit = audit(review, 'Granskning')
     excluded_audit = audit(excluded, 'Bortfiltrerade')
     combined_audit = dict(review_audit)

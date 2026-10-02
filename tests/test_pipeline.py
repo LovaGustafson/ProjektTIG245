@@ -34,7 +34,9 @@ def test_complete_run_filtering_invalid_rows_and_unresolved_rules(tmp_path):
     assert len(result.ungrouped_data) == 1
     assert all(check.status == CheckStatus.NOT_CHECKED
                for detection in result.detection_results for check in detection.checks)
-    assert [v.verification_id for v in result.manual_sample] == ['003']
+    assert result.manual_sample == []  # No Huvudtext supplier identity in this fixture.
+    assert result.sampling_result.decisions.iloc[1]['decision'] == 'UNUSABLE_IDENTITY'
+    assert '0 av önskade 1' in result.sampling_result.shortfall_message
     assert all(p.exists() for p in result.report_paths.values())
     assert len(read_excel(result.report_paths['cleaned_data'])) == 4
     assert path.read_bytes() == before
@@ -49,11 +51,11 @@ def test_all_analysis_before_sampling_and_multiple_reasons(tmp_path, monkeypatch
         assert '7698' not in v.rows['account'].tolist()
         return [CheckResult(v.verification_id, 'synthetic', CheckStatus.FLAGGED, reason)
                 for reason in ['First', 'Second']]
-    real_sample = pipeline.create_manual_sample
+    real_sample = pipeline.plan_manual_sample
     def sample(*args, **kwargs):
         assert analyzed == ['001', '003']
         return real_sample(*args, **kwargs)
-    monkeypatch.setattr(pipeline, 'create_manual_sample', sample)
+    monkeypatch.setattr(pipeline, 'plan_manual_sample', sample)
     result = pipeline.run_pipeline(path, settings_path=settings, output_dir=tmp_path / 'out',
                                    rules={'synthetic': synthetic_rule})
     assert result.detection_results[0].flag_reasons == ('First', 'Second')
