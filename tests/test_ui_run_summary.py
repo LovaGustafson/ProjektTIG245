@@ -44,7 +44,9 @@ def test_charts_reconcile_source_filters_sampling_and_export():
     assert any(key.startswith('internal_supplier:') for key in actual_rules)
     assert s.ungrouped_rows == 1
     assert charts['sample'].Antal.sum() == len(result.verifications)
-    assert counts(charts['sample'])['selected'] == len(result.manual_sample) == 2
+    # The synthetic retained rows all have the same normalized supplier.
+    assert counts(charts['sample'])['selected'] == len(result.manual_sample) == 1
+    assert result.sampling_result.target_size == 2
     assert s.sampled_rows == sum(len(v.rows) for v in result.manual_sample)
     exported = pd.read_excel(BytesIO(review.downloads['manual_sample.xlsx']), 'Körningsöversikt')
     exported_counts = dict(exported.itertuples(index=False, name=None))
@@ -73,7 +75,7 @@ def test_supplier_statuses_and_contract_comparison_units_are_preserved():
     pd.testing.assert_frame_equal(result.supplier_analysis.rows, before)
 
 
-def test_all_check_statuses_remain_separate_without_inflating_flags(tmp_path):
+def test_check_statuses_remain_in_backend_without_dashboard_distribution(tmp_path):
     source = tmp_path / 'synthetic.xlsx'
     source.write_bytes(workbook(invoices(2)))
 
@@ -83,7 +85,8 @@ def test_all_check_statuses_remain_separate_without_inflating_flags(tmp_path):
 
     result = run_pipeline(source, output_dir=tmp_path / 'reports', use_default_registry=False,
                           rules={'synthetic': synthetic_rule})
-    assert counts(dashboard_tables(result)['checks']) == {'PASS': 1, 'FLAGGED': 1, 'ERROR': 1, 'NOT_CHECKED': 2}
+    assert 'checks' not in dashboard_tables(result)
+    assert result.summary.check_status_counts == {'PASS': 1, 'FLAGGED': 1, 'ERROR': 1, 'NOT_CHECKED': 2}
     assert result.summary.flagged_verifications == 1
     assert result.summary.flagged_rows == 1
 
@@ -95,8 +98,8 @@ def test_unavailable_register_has_no_fabricated_supplier_statuses(register_conte
     assert charts['suppliers'].empty
     assert charts['contracts'].Antal.sum() == 0
     assert review.result.summary.supplier_unavailable_rows == 3
-    assert counts(charts['checks'])['FLAGGED'] == 0
-    assert counts(charts['checks'])['NOT_CHECKED'] == 12
+    assert 'checks' not in charts
+    assert review.result.summary.check_status_counts == {'NOT_CHECKED': 12}
 
 
 @pytest.mark.parametrize('mode', ['empty', 'all_excluded', 'no_exclusions', 'matching'])
@@ -114,6 +117,11 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
     assert not app.exception
     assert app.subheader[0].value == 'Analysöversikt'
     assert any(h.value == 'Detaljer och granskning' for h in app.subheader)
+    assert not any('Detektionskontroller' in item.value for item in app.markdown)
+    assert not any('kontrollresultat' in e.label.lower() for e in app.expander)
+    assert not any(b.key == 'control_not_checked' for b in app.button)
+    assert any(i.value == 'Attestkontroll ej genomförd – kräver attestregister eller motsvarande '
+               'behörighetsunderlag som inte finns tillgängligt i prototypen.' for i in app.info)
     metrics = {m.label: m.value for m in app.metric}
     assert metrics['Källpopulation · rader'] == str(review.result.summary.source_rows)
     assert metrics['Flaggade · verifikationer'] == '0'
@@ -133,6 +141,7 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
         spec = json.loads(chart.proto.spec)
         alt.LayerChart.from_dict(spec, validate=True)
         assert spec['encoding']['x']['field'] == 'Antal'
+        assert spec['encoding']['x']['axis']['title'] != 'Kontrollresultat'
         assert spec['encoding']['x']['axis']['tickMinStep'] == 1
         assert spec['layer'][1]['encoding']['text']['field'] == 'Antal'
     elements = [node.type for node in app]

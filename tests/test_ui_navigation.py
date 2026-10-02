@@ -53,6 +53,12 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     assert not app.exception
     table = app.tabs[0].dataframe[0]
     assert table.value.Vernr.tolist() == ids
+    if key == 'AMBIGUOUS_MATCH':
+        assert table.value['Matchad avtalsleverantör'].tolist() == ['Nordmöbler AB (kandidat)']
+        assert table.value['Orsak'].tolist() == review.result.supplier_analysis.rows.loc[
+            lambda rows: rows['supplier_match_status'].eq('AMBIGUOUS_MATCH'), 'supplier_match_reason'].tolist()
+    elif key in ('NO_MATCH', 'SUPPLIER_NOT_IDENTIFIED'):
+        assert table.value['Matchad avtalsleverantör'].tolist() == ['Ingen kandidat identifierad']
     assert app.button(key='supplier_' + key).label.startswith(f'**{len(ids)}**')
     assert any('Aktivt vyfilter:' in i.value for i in app.info)
     states = app._tree.get_widget_states()
@@ -83,7 +89,7 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     pd.testing.assert_frame_equal(review.result.original_data, original)
 
 
-@pytest.mark.parametrize('key,count', [('analyzed', 4), ('flagged', 1), ('validation', 1), ('not_checked', 16)])
+@pytest.mark.parametrize('key,count', [('analyzed', 4), ('flagged', 1), ('validation', 1)])
 def test_control_cards_show_exact_records_and_clear(key, count):
     app, _ = start()
     app.button(key='control_' + key).click().run()

@@ -15,7 +15,7 @@ APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
 def synthetic_file(tmp_path):
     rows = [dict(Vernr=f'{i:03}', Vrad=1, Verdatum='2026-09-03', Utfall=10,
-                 Konto='4000', Huvudtext='Syntetisk faktura') for i in range(1, 43)]
+                 Konto='4000', Huvudtext=f'Syntetisk leverantör {i} AB Prelb 1') for i in range(1, 43)]
     rows += [dict(rows[0], Vrad=2, Utfall='felaktigt belopp'),
              dict(rows[0], Vernr='EXCLUDED', Konto='7698')]
     path = tmp_path / 'synthetic.xlsx'
@@ -29,7 +29,7 @@ def test_real_pipeline_order_and_source_immutability(tmp_path):
     calls = []
     names = ['read_excel', 'map_columns', 'validate', 'filter_rows', 'build_verifications',
              'read_supplier_register', 'read_attestation_register', 'run_detection',
-             'create_manual_sample', 'generate_reports']
+             'plan_manual_sample', 'generate_reports']
     from contextlib import ExitStack
     with ExitStack() as stack:
         for name in names:
@@ -69,7 +69,6 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
         'control_analyzed': '**42**  \nAnalyserade',
         'control_flagged': '**0**  \nFlaggade',
         'control_validation': '**1**  \nValideringsfel',
-        'control_not_checked': '**168**  \nEj kontrollerade',
     }
     review = app.session_state['review']
     download_labels = {

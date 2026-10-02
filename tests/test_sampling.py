@@ -12,6 +12,7 @@ def verifications(count):
         "verification_id": [str(i)] * (i % 3 + 1),
         "verification_line_id": range(1, i % 3 + 2),
         "amount": ["invalid synthetic amount"] * (i % 3 + 1),
+        "header_text": [f"Syntetisk leverantör {i} AB Prelb 1"] * (i % 3 + 1),
     })) for i in range(1, count + 1)]
 
 

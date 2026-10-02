@@ -55,9 +55,18 @@ excluded_verification_types:
 # PROJECT_SPEC.md, "8. Technical validation and duplicate semantics".
 required_fields: null
 
-# Confirmed: every 20th eligible verification, after analysis, in first-appearance order.
-# Implemented in src/sampling/manual_sample.py; evidence/documentation remains Q2.
+# Nominal positions 20, 40, ...; duplicate/missing/multiple suppliers are skipped
+# forward (priority 2, 2026-09-30). Target floor(population / interval), no duplicates.
 manual_sample_interval: 20
+
+# Presentation only: no generic internal/external signal exists. No examples are
+# activated. Each future entry requires explicit confirmation and a reason.
+# Fields: id, match_field (organization_number or supplier_name), value (string),
+# classification (INTERNAL / NOT_RELEVANT / EXTERNAL), reason, confirmed (boolean).
+# Names use exact existing Huvudtext extraction + normalization; organization
+# numbers require STRONG_MATCH. Unmatched/conflicting rules do not hide rows.
+# These rules never affect sampling, matching accuracy, base filters or exports.
+supplier_view_rules: []
 
 # Confirmed in the feature-package request, 2026-09-24. Exact supplier expressions.
 excluded_internal_suppliers:

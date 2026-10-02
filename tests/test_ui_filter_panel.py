@@ -151,6 +151,7 @@ def test_manual_sample_has_original_fields_and_independent_filters():
     data = pd.DataFrame({'Vernr': [f'{i:03}' for i in range(1, 41)], 'Vrad': [1] * 40,
                          'VerDat': ['2026-09-08'] * 40, 'Utfall': range(40),
                          'Konto': ['5410'] * 40, 'Vertyp': ['NEW'] * 40,
+                         'Huvudtext': [f'Leverantör {i} AB Prelb 1' for i in range(1, 41)],
                          'Radtext': [f'Rad {i}' for i in range(1, 41)]})
     buffer = BytesIO()
     data.to_excel(buffer, index=False)
