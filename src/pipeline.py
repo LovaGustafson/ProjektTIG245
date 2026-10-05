@@ -15,7 +15,7 @@ from src.verification.verification_builder import build_verifications
 from src.detection.detection_engine import run_detection, DetectionResult
 from src.models.result import CheckStatus
 from src.models.verification import Verification
-from src.sampling.manual_sample import create_manual_sample, load_sample_interval
+from src.sampling.manual_sample import plan_manual_sample, load_sample_interval, SamplingResult
 from src.output.report_generator import generate_reports
 from src.presentation import summary_counts
 from src.ingestion.registry_source import resolve_registry_source, load_contract_source, RegistrySource
@@ -23,6 +23,7 @@ from src.supplier_matching.analysis import SupplierAnalysis, analyze_suppliers
 from src.supplier_matching.settings import load_matching_settings, MatchSettings
 from src.supplier_matching.contract_period import ContractDatePolicy
 from src.run_summary import RunSummary, summarize_run
+from src.supplier_matching.view_scope import load_view_rules, classify_supplier_view
 
 
 @dataclass
@@ -42,6 +43,8 @@ class PipelineResult:
     source_context: dict | None = None
     sampling_evidence: pd.DataFrame | None = None
     registry_source: RegistrySource | None = None
+    sampling_result: SamplingResult | None = None
+    supplier_view: pd.DataFrame | None = None
 
 
 def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
@@ -88,6 +91,7 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
     contract_policy = ContractDatePolicy(**(config.get('contract_period') or {}))
     supplier_analysis = analyze_suppliers(cleaned, registry, settings=matching, date_format=date_format,
                                          contract_policy=contract_policy)
+    supplier_view = classify_supplier_view(cleaned, supplier_analysis, load_view_rules(settings_path))
     eligible = cleaned.loc[~cleaned.index.isin(unusable)]
     ungrouped = cleaned.loc[cleaned.index.isin(unusable)].copy(deep=True)
     if list(eligible.columns).count('verification_id') == 1:
@@ -108,19 +112,18 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                              rule_options=rule_options, rules=rules)
                for v, evidence in zip(verifications, images)]
     interval = load_sample_interval(settings_path)
-    sample = create_manual_sample(verifications, interval=interval)
+    sampling_result = plan_manual_sample(verifications, interval=interval, supplier_analysis=supplier_analysis)
+    sample = sampling_result.sample
     run_summary = summarize_run(original, filtering, ungrouped, verifications, results,
                                 sample, supplier_analysis, interval)
     source_context = {'source_name': source_name or Path(input_path).name,
                       'source_sha256': sha256(Path(input_path).read_bytes()).hexdigest(),
                       'source_sheet': original.attrs.get('source_sheet'),
                       'source_header_row': original.attrs.get('source_header_row')}
-    sampling_evidence = pd.DataFrame([
-        {'population_position': position, 'verification_id': v.verification_id,
-         'source_row_position': source_position}
-        for position, v in enumerate(verifications, 1) if position % interval == 0
-        for source_position in v.rows.index
-    ], columns=['population_position', 'verification_id', 'source_row_position'])
+    selected_positions = sampling_result.decisions.loc[
+        sampling_result.decisions['decision'] == 'SELECTED', 'population_position']
+    sampling_evidence = sampling_result.identity_rows.loc[
+        sampling_result.identity_rows['population_position'].isin(selected_positions)].copy(deep=True)
     flagged = [v for v, result in zip(verifications, results) if result.flag_reasons]
     checks = [check for result in results for check in result.checks
               if check.status == CheckStatus.FLAGGED]
@@ -129,6 +132,7 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                              summary=summary_counts(standardized, validation, results),
                              supplier_analysis=supplier_analysis, run_summary=run_summary,
                              source_context=source_context, sampling_evidence=sampling_evidence,
+                             sampling_result=sampling_result, supplier_view=supplier_view,
                              original_data=original, filtering=filtering)
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
@@ -138,4 +142,5 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
         todos += supplier_analysis.registry.issues
     return PipelineResult(original, standardized, validation, filtering, ungrouped,
                           verifications, results, sample, paths, todos, supplier_analysis,
-                          run_summary, source_context, sampling_evidence, registry_source)
+                          run_summary, source_context, sampling_evidence, registry_source,
+                          sampling_result, supplier_view)

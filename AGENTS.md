@@ -313,7 +313,9 @@ Current principles include:
 - analysis occurs before manual sampling,
 - sampling occurs at verification level rather than raw Excel-row level,
 - selection must not depend on whether a verification was flagged,
-- every 20th eligible verification is selected in the current first-appearance order, using the configured interval of 20.
+- nominal positions are every 20th verification in first-appearance order; the 2026-09-30 priority-2 request adds supplier uniqueness and deterministic forward replacement without duplicate backfilling (PROJECT_SPEC.md section 13),
+- strong supplier matches use organization numbers; the user confirmed normalized Huvudtext supplier names as fallback and keeping missing/multiple identities outside the sample with evidence,
+- supplier-view classification is separate from sampling; no external-only sample is confirmed.
 
 Do not change the sampling method solely because the customer-facing evidence/documentation requirements remain unresolved (OPEN_QUESTIONS.md Q2).
 

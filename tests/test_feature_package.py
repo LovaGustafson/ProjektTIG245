@@ -88,6 +88,7 @@ def test_internal_supplier_exclusions_are_exact_and_traceable(text, rule):
 
 def test_sampling_counts_export_and_reproduction_with_exclusions_and_ungrouped_rows():
     data = invoices(104)
+    data['Huvudtext'] = [f'Syntetisk leverantör {i} AB Prelb 1' for i in range(104)]
     data.loc[:2, 'Huvudtext'] = ['mall', 'Fastighetstöd', 'Försörjningsförvaltning']
     data.loc[0, 'Konto'] = '7698'  # Overlapping reasons still describe one occurrence.
     data.loc[103, 'Vernr'] = None
@@ -240,9 +241,10 @@ def test_dashboard_sampling_and_register_remove_restore():
     assert {m.label: m.value for m in app.metric} == {
         'Källpopulation · rader': '100', 'Kvarvarande · rader': '100',
         'Exkluderade · rader': '0', 'Flaggade · verifikationer': '0',
-        'Manuellt urval · verifikationer': '5',
-        'Verifikationer i urvalspopulationen': '100', 'Stickprovsintervall': '1 av 20',
-        'Valda verifikationer': '5', 'Rader i stickprovet': '5'}
+        'Manuellt urval · verifikationer': '1',
+        'Verifikationer i urvalspopulationen': '100', 'Ordinarie urvalsintervall': 'Var 20:e',
+        'Valda verifikationer': '1', 'Rader i stickprovet': '1'}
+    assert any('1 av önskade 5' in warning.value for warning in app.warning)
     assert app.session_state['review'].registry_source.kind == 'uploaded'
     next(b for b in app.button if b.label == 'Ta bort register').click().run()
     assert 'review' not in app.session_state

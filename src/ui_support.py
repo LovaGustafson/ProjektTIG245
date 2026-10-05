@@ -57,7 +57,8 @@ def analyze_upload(content: bytes, *, excluded_verification_types=None,
         downloads = {path.name: path.read_bytes() for path in result.report_paths.values()}
     downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
                                      run_summary=result.summary, source_context=result.source_context,
-                                     sampling_evidence=result.sampling_evidence))
+                                     sampling_evidence=result.sampling_evidence,
+                                     sampling_result=result.sampling_result, supplier_view=result.supplier_view))
     return UploadResult(result, downloads, bytes(content),
                         None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)),
                         selected_registry.content, selected_registry.snapshot_date,

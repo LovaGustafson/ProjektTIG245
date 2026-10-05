@@ -3,6 +3,7 @@ from dataclasses import asdict
 from numbers import Integral
 
 import pandas as pd
+from src.supplier_matching.view_scope import visible_supplier_analysis
 
 
 def source_rows(result, positions):
@@ -68,7 +69,7 @@ def detection_details(result, status):
 
 def supplier_details(result, status):
     """Subset each evidence table by retained source position, never supplier/verification ID."""
-    analysis = result.supplier_analysis
+    analysis = visible_supplier_analysis(result.supplier_analysis, result.supplier_view)
     matches = analysis.rows.loc[analysis.rows['supplier_match_status'] == status].copy(deep=True)
     positions = matches['source_row_position'].tolist()
     candidates = analysis.candidates.loc[analysis.candidates['source_row_position'].isin(positions)].copy(deep=True)

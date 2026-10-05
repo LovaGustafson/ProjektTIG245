@@ -71,17 +71,24 @@ def test_streamlit_result_screen():
     review = ui_support.analyze_upload(workbook())
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'streamlit_app.py'))
     app.session_state['review'] = review
+    # A previous session's removed drill-down must not expose placeholder results.
+    app.session_state['selected_control'] = 'not_checked'
     app.run()
     assert not app.exception
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('kpi_')] == ['1', '1', '0', '0', '0']
-    assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1', '4']
-    assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel', 'Ej kontrollerade']
+    assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1']
+    assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel']
     assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll']
     assert len(app.get('download_button')) == 6
-    assert app.warning
-    assert 'inte att alla kontroller är godkända' in app.warning[0].value
-    controls = app.tabs[2].dataframe[0].value
-    assert controls['Status'].tolist() == ['Ej kontrollerad'] * 4
+    assert not any('Vissa kontroller har inte bedömts' in warning.value for warning in app.warning)
+    assert not app.tabs[2].dataframe
+    assert not any('Detektionskontroller' in item.value for item in app.markdown)
+    assert not any(e.label == 'Alla kontrollresultat' for e in app.expander)
+    assert [i.value for i in app.info if i.value.startswith('Attestkontroll')] == [
+        'Attestkontroll ej genomförd – kräver attestregister eller motsvarande behörighetsunderlag '
+        'som inte finns tillgängligt i prototypen.']
+    assert review.result.summary.check_status_counts == {'NOT_CHECKED': 4}
+    assert all(check.status == 'NOT_CHECKED' for r in review.result.detection_results for check in r.checks)
     assert len(app.tabs[0].dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
         'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
@@ -118,7 +125,8 @@ def test_validation_tab_separates_schema_and_row_errors_without_mutating_evidenc
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    schema, rows = [table.value for table in app.tabs[0].dataframe][1:]
+    validation = next(e for e in app.tabs[0].expander if e.label == 'Valideringsfel')
+    schema, rows = [table.value for table in validation.dataframe]
     assert schema['code'].tolist() == ['missing_column']
     assert schema['field'].tolist() == ['Konto']
     assert 'verification_id' not in schema.columns
@@ -144,20 +152,26 @@ def test_flagged_selection_retains_swedish_reasons_rows_and_error_status():
                         f'Orsak för {original.verification_id}: <b>oförändrad text</b>'),
             CheckResult(original.verification_id, 'synthetic', CheckStatus.ERROR,
                         'Tekniskt fel i kontrollen.'),
+            CheckResult(original.verification_id, 'synthetic', CheckStatus.NOT_CHECKED,
+                        'Syntetisk kontroll utan underlag.'),
+            CheckResult(original.verification_id, 'synthetic', CheckStatus.PASS,
+                        'Syntetiskt passerat resultat.'),
         ))
     before = ui_support.flagged_table(review.result).copy(deep=True)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'streamlit_app.py'))
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert app.tabs[0].dataframe[1].value['status'].tolist() == ['Flaggad'] * 2
+    flagged = next(table.value for table in app.tabs[0].dataframe if 'status' in table.value)
+    assert flagged['status'].tolist() == ['Flaggad'] * 2
     assert app.tabs[2].dataframe[0].value['Status'].tolist() == ['Flaggad', 'Tekniskt fel'] * 2
     assert any('tekniska fel' in warning.value for warning in app.warning)
     app.selectbox[0].select(1).run()
     assert not app.exception
     assert 'Orsak för 002: <b>oförändrad text</b>' in [item.value for item in app.text]
     assert 'Orsak för 001: <b>oförändrad text</b>' not in [item.value for item in app.text]
-    assert app.tabs[0].dataframe[2].value['verification_id'].tolist() == ['002']
+    detail = next(c for c in app.get('flex_container') if c.key == 'verification_detail')
+    assert detail.dataframe[0].value['verification_id'].tolist() == ['002']
     pd.testing.assert_frame_equal(ui_support.flagged_table(review.result), before)
 
 

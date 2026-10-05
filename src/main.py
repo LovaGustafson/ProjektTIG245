@@ -37,6 +37,10 @@ def main(argv=None):
         return 1
     print(f'Analyzed: {len(result.detection_results)} verifications')
     print(f'Invalid rows: {sum(r.validation_status == "INVALID" for r in result.validation.rows)}')
+    if result.sampling_result is not None:
+        print(f'Manual sample: {len(result.manual_sample)} / {result.sampling_result.target_size} verifications')
+        if result.sampling_result.shortfall_message:
+            print(result.sampling_result.shortfall_message)
     if result.supplier_analysis is not None:
         for label, count in result.supplier_analysis.summary().items():
             print(f'{label}: {count}')

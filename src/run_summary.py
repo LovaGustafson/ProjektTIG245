@@ -7,6 +7,15 @@ from src.models.supplier import SupplierMatchStatus
 SAMPLE_ORDER = 'Första förekomst i källdata efter basfiltrering och gruppering; ingen omsortering.'
 SAMPLE_POPULATION = ('Alla kvarvarande verifikationer med användbart verifikations-ID, '
                      'efter analys och oberoende av flaggning. Hela kvarvarande grupper väljs.')
+SAMPLE_METHOD = ('Ordinarie intervallpositioner prövas i populationens ordning. Vid redan vald leverantör '
+                 'eller saknad/flera leverantörsidentiteter prövas nästa verifikation framåt. '
+                 'Nästa intervallposition flyttas inte, men redan passerade kandidater prövas inte igen. '
+                 'Ingen återgång till tidigare positioner eller utfyllnad med dubletter görs.')
+SAMPLE_IDENTITY = ('Stark träff använder organisationsnummer; annars används exakt normaliserat '
+                   'leverantörsnamn extraherat ur Huvudtext. Alla rader i verifikationen måste ha samma nyckel. '
+                   'Varken samma nyckel eller samma normaliserade namn får väljas igen. '
+                   'Namnnyckeln bekräftar inte juridisk identitet. Motp används inte. '
+                   'Intern/extern-klassificering för leverantörsvyn påverkar inte stickprovet.')
 
 
 @dataclass(frozen=True)
