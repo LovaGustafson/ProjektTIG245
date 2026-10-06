@@ -151,3 +151,27 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
     assert app.tabs[0].dataframe  # Existing source-linked detail views remain.
     pd.testing.assert_frame_equal(review.result.original_data, source_before)
     assert review.downloads == downloads_before
+
+
+def test_restored_graphical_overview_with_previous_interaction_state():
+    data = invoices(21)
+    data.loc[0, 'Konto'] = '7698'
+    review = analyze_upload(workbook(data), registry_content=workbook(registry()), defer_downloads=True)
+    app = AppTest.from_file(str(APP), default_timeout=20)
+    app.session_state['review'] = review
+    app.session_state['overview_detail:chart_population:included'] = True
+    app.session_state['chart_population'] = {'selection': {'category': [{'Status': 'included'}]}}
+    app.run()
+    assert not app.exception
+    assert len(app.metric) == 9
+    charts = app.get('vega_lite_chart')
+    assert len(charts) == 5
+    for chart in charts:
+        spec = json.loads(chart.proto.spec)
+        assert [layer['mark']['type'] for layer in spec['layer']] == ['bar', 'text']
+        assert 'params' not in spec
+        assert spec['encoding']['y']['field'] == 'Kategori'
+    assert not any(b.key and b.key.startswith(('overview_kpi_', 'sample_kpi_')) for b in app.button)
+    retained = next(e for e in app.expander if e.label.startswith('Kvarvarande ·'))
+    assert retained.dataframe[0].value.source_row_position.tolist() == list(range(1, 21))
+    assert not review.downloads._bytes
