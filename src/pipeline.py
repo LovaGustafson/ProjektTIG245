@@ -52,7 +52,7 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                  supplier_register=None, attestation_register=None,
                  rule_options=None, rules=None, excluded_verification_types=None,
                  registry_snapshot_date=None, registry_source=None,
-                 use_default_registry=True, source_name=None) -> PipelineResult:
+                 use_default_registry=True, source_name=None, export_reports=True) -> PipelineResult:
     """Run analysis of every grouped verification before selecting the sample.
 
     Validation metadata refers to standardized_data positions before filtering.
@@ -124,23 +124,30 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
         sampling_result.decisions['decision'] == 'SELECTED', 'population_position']
     sampling_evidence = sampling_result.identity_rows.loc[
         sampling_result.identity_rows['population_position'].isin(selected_positions)].copy(deep=True)
-    flagged = [v for v, result in zip(verifications, results) if result.flag_reasons]
-    checks = [check for result in results for check in result.checks
-              if check.status == CheckStatus.FLAGGED]
-    paths = generate_reports(cleaned, flagged_verifications=flagged,
-                             flagged_checks=checks, manual_sample=sample, output_dir=output_dir,
-                             summary=summary_counts(standardized, validation, results),
-                             supplier_analysis=supplier_analysis, run_summary=run_summary,
-                             source_context=source_context, sampling_evidence=sampling_evidence,
-                             sampling_result=sampling_result, supplier_view=supplier_view,
-                             original_data=original, filtering=filtering)
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',
     )
     if supplier_analysis is not None:
         todos += supplier_analysis.registry.issues
-    return PipelineResult(original, standardized, validation, filtering, ungrouped,
-                          verifications, results, sample, paths, todos, supplier_analysis,
+    result = PipelineResult(original, standardized, validation, filtering, ungrouped,
+                          verifications, results, sample, {}, todos, supplier_analysis,
                           run_summary, source_context, sampling_evidence, registry_source,
                           sampling_result, supplier_view)
+    if export_reports:
+        result.report_paths = export_pipeline_result(result, output_dir=output_dir)
+    return result
+
+
+def export_pipeline_result(result, *, output_dir, report_names=None):
+    """Serialize existing evidence without rerunning any part of the analysis."""
+    flagged = [v for v, detection in zip(result.verifications, result.detection_results) if detection.flag_reasons]
+    checks = [check for detection in result.detection_results for check in detection.checks
+              if check.status == CheckStatus.FLAGGED]
+    return generate_reports(result.filtering.cleaned_data, flagged_verifications=flagged,
+        flagged_checks=checks, manual_sample=result.manual_sample, output_dir=output_dir,
+        summary=summary_counts(result.standardized_data, result.validation, result.detection_results),
+        supplier_analysis=result.supplier_analysis, run_summary=result.summary,
+        source_context=result.source_context, sampling_evidence=result.sampling_evidence,
+        sampling_result=result.sampling_result, supplier_view=result.supplier_view,
+        original_data=result.original_data, filtering=result.filtering, report_names=report_names)

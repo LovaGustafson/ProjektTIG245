@@ -1,5 +1,6 @@
 """Local invoice review interface. Run with streamlit run streamlit_app.py."""
 from pathlib import Path
+from functools import partial
 
 import streamlit as st
 import pandas as pd
@@ -17,6 +18,7 @@ from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_navigation import home, select_drilldown, active_drilldown
 from src.supplier_matching.settings import load_matching_settings, snapshot_date
 from src.ui_run_summary import show_run_summary
+from src.ui_overview_details import verification_details
 from src.ingestion.registry_source import default_registry_location
 
 
@@ -171,12 +173,14 @@ def show_reports(review):
               'bortfiltrerade.xlsx': 'Bortfiltrerade',
               'samlad_kontrollfil.xlsx': 'Samlad kontrollfil'}
     for filename, label in labels.items():
-        st.download_button(label, review.downloads[filename], file_name=filename,
+        st.download_button(label, partial(review.downloads.__getitem__, filename), file_name=filename,
+                           on_click='ignore',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     with st.expander('Avvikelser, manuellt stickprov och osäkra leverantörsträffar', expanded=True):
         st.caption('Stickprovet väljs efter analysen och begränsar inte vilka rader som granskas.')
         for filename in ('flagged_invoices.xlsx', 'manual_sample.xlsx', 'uncertain_suppliers.xlsx'):
-            st.download_button(REPORT_LABELS[filename][2], review.downloads[filename],
+            st.download_button(REPORT_LABELS[filename][2], partial(review.downloads.__getitem__, filename),
+                               on_click='ignore',
                                file_name=filename,
                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
@@ -232,6 +236,12 @@ def show_result(review):
                    'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
         if result.sampling_result is not None and result.sampling_result.shortfall_message:
             st.warning(result.sampling_result.shortfall_message)
+        groups, _ = verification_details(result, 'selected')
+        st.dataframe(display_dataframe(groups[['verification_id', 'supplier']]),
+                     column_config={'verification_id': 'Verifikation', 'supplier': 'Leverantör'},
+                     hide_index=True, width='stretch')
+        st.caption('Leverantörsnamnen kommer från stickprovets befintliga identitetsunderlag. '
+                   'Ett namn från Huvudtext är inte i sig en bekräftad juridisk identitet.')
         # The reader supplies unique row indexes; grouping/sampling retain them.
         positions = [position for verification in result.manual_sample for position in verification.rows.index]
         sample = result.original_data.loc[positions].copy(deep=True)
@@ -336,7 +346,7 @@ def show_filters(review):
     options = sorted(set(defaults) | set(present))
     with st.sidebar:
         st.button('Till översikt', key='home', icon=':material/home:', on_click=home)
-        st.subheader('Exkluderingsregler (MoSCoW)')
+        st.subheader('Exkluderingsregler')
         st.caption('Valda typer exkluderas. Ta bort ett val för att återinkludera typen.')
         if st.button('Återställ filter till standard'):
             st.session_state['excluded_types'] = defaults
@@ -350,7 +360,7 @@ def show_filters(review):
                                  registry_content=review.registry_content,
                                  registry_snapshot_date=review.registry_snapshot_date,
                                  registry_source=review.registry_source, source_name=review.source_name,
-                                 settings_path=review.settings_path)
+                                 settings_path=review.settings_path, defer_downloads=True)
         clear_ui_filters()
         st.session_state.pop('selected_verification', None)
         st.session_state.pop('review_rows', None)
@@ -403,7 +413,7 @@ def main():
                     registry_snapshot_date=registry_date,
                     registry_mode='default' if enabled else 'disabled',
                     registry_name=registry_upload.name if registry_upload else None,
-                    source_name=upload.name)
+                    source_name=upload.name, defer_downloads=True)
         except Exception:
             st.error('Analysen kunde inte slutföras. Kontrollera att filen är en giltig Excel-fil '
                      'och att projektets inställningar är korrekta.')

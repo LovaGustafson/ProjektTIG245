@@ -147,6 +147,7 @@ def generate_reports(
     filtering=None,
     sampling_result=None,
     supplier_view=None,
+    report_names=None,
 ) -> dict[str, Path]:
     """Export review workbooks and return their paths keyed by report name.
 
@@ -198,24 +199,28 @@ def generate_reports(
                       header_text=context.get('header_text'), code=None,
                       message=check_message(check))
         checks.append(record)
+    # Factories preserve the serializer and sheet contents while allowing the UI
+    # to prepare only the requested download. CLI callers still create all files.
     workbooks = {
-        "cleaned_data": _workbook({"rows": enrich_rows(cleaned_data, supplier_analysis),
+        "cleaned_data": lambda: _workbook({"rows": enrich_rows(cleaned_data, supplier_analysis),
                                     **supplier_sheets(supplier_analysis), **audit(cleaned_data)}),
-        "flagged_invoices": _workbook({
+        "flagged_invoices": lambda: _workbook({
             "checks": pd.DataFrame(checks, columns=CHECK_COLUMNS),
             "rows": flagged_rows,
             **supplier_sheets(supplier_analysis, flagged_rows.index),
             **({"Summary": pd.DataFrame([summary])} if summary is not None else {}),
             **audit(flagged_rows),
         }),
-        "manual_sample": _workbook({"rows": sample_rows,
+        "manual_sample": lambda: _workbook({"rows": sample_rows,
                                     **supplier_sheets(supplier_analysis, sample_rows.index), **audit(sample_rows)}),
-        "uncertain_suppliers": _workbook({"rows": uncertain_rows,
+        "uncertain_suppliers": lambda: _workbook({"rows": uncertain_rows,
                                     **supplier_sheets(supplier_analysis, uncertain_rows.index), **audit(uncertain_rows)}),
     }
     if original_data is not None and filtering is not None:
         _, excluded = review_tables(original_data, filtering)
-        workbooks['excluded_data'] = _workbook({'Bortfiltrerade': excluded, **audit(excluded, 'Bortfiltrerade')})
+        workbooks['excluded_data'] = lambda: _workbook({'Bortfiltrerade': excluded, **audit(excluded, 'Bortfiltrerade')})
+    names = list(workbooks) if report_names is None else list(report_names)
+    workbooks = {name: workbooks[name]() for name in names}
     directory = Path(output_dir)
     paths = {name: directory / f"{name}.xlsx" for name in workbooks}
     directory.mkdir(parents=True, exist_ok=True)
@@ -259,7 +264,8 @@ def review_summary(original_data, filtering):
 
 
 def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_summary=None,
-                     source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None):
+                     source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None,
+                     filenames=None):
     review, excluded = review_tables(original_data, filtering)
     review = enrich_rows(review, supplier_analysis)
     counts = review_summary(original_data, filtering)
@@ -279,12 +285,14 @@ def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_su
             review_audit['Källspårning'], excluded_audit['Källspårning']], ignore_index=True)
     summary = pd.DataFrame(list(counts.items()),
                            columns=['Mått', 'Antal'])
-    return {
-        'granskning.xlsx': _workbook({'Granskning': review, **supplier_sheets(supplier_analysis), **review_audit}),
-        'bortfiltrerade.xlsx': _workbook({'Bortfiltrerade': excluded, **excluded_audit}),
-        'samlad_kontrollfil.xlsx': _workbook({
+    workbooks = {
+        'granskning.xlsx': lambda: _workbook({'Granskning': review, **supplier_sheets(supplier_analysis), **review_audit}),
+        'bortfiltrerade.xlsx': lambda: _workbook({'Bortfiltrerade': excluded, **excluded_audit}),
+        'samlad_kontrollfil.xlsx': lambda: _workbook({
             'Granskning': review, 'Bortfiltrerade': excluded, 'Sammanfattning': summary,
             **supplier_sheets(supplier_analysis),
             **combined_audit,
         }),
     }
+    names = list(workbooks) if filenames is None else list(filenames)
+    return {name: workbooks[name]() for name in names}

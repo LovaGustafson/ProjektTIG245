@@ -58,6 +58,7 @@ DETAIL_COLUMNS = {
     'source_link': 'Källkoppling', 'exclusion_reason': 'Exkluderingsorsak',
     'population_position': 'Position i urvalspopulationen', 'row_count': 'Antal källrader',
     'verification_id': 'Verifikation', 'verification_line_id': 'Verifikationsrad',
+    'supplier': 'Leverantör',
     'row_position': 'row_position (inom verifikationen, från 0)',
     'check_type': 'Kontroll (check_type)', 'field': 'Fält (field)',
     'reason': 'Orsak (reason)', 'status': 'Status (status)',

@@ -1,7 +1,10 @@
 """Presentation helpers and temporary upload handling; no analysis rules."""
 from dataclasses import dataclass
+from collections.abc import Mapping
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Lock
 
 import pandas as pd
 import pyarrow as pa
@@ -9,7 +12,7 @@ import pyarrow as pa
 from src.output.report_generator import review_workbooks
 from src.presentation import context_fields, validation_records, validation_message
 from src.presentation import customer_facing_rows, customer_facing_value
-from src.pipeline import PipelineResult, run_pipeline
+from src.pipeline import PipelineResult, run_pipeline, export_pipeline_result
 from src.filtering.filter_engine import DEFAULT_SETTINGS_PATH
 from src.ingestion.registry_source import resolve_registry_source, RegistrySource
 
@@ -17,7 +20,7 @@ from src.ingestion.registry_source import resolve_registry_source, RegistrySourc
 @dataclass
 class UploadResult:
     result: PipelineResult
-    downloads: dict[str, bytes]
+    downloads: Mapping[str, bytes]
     source_content: bytes
     excluded_types: tuple[str, ...] | None
     registry_content: bytes | None = None
@@ -27,14 +30,60 @@ class UploadResult:
     settings_path: object = DEFAULT_SETTINGS_PATH
 
 
+class DeferredDownloads(Mapping):
+    """Session-owned, per-result downloads; never shared across runs or users.
+
+    Snapshot the completed evidence, not paths/configuration to read later. A new
+    analysis always gets a new instance, so source/register/date/settings/filter
+    changes cannot reuse a previous run's bytes. Streamlit calls downloads from
+    a separate thread; the lock also avoids duplicate serialization on double clicks.
+    """
+    FILENAMES = ('cleaned_data.xlsx', 'flagged_invoices.xlsx', 'manual_sample.xlsx',
+                 'uncertain_suppliers.xlsx', 'excluded_data.xlsx', 'granskning.xlsx',
+                 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx')
+    REVIEW_FILES = ('granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx')
+
+    def __init__(self, result):
+        self._result = deepcopy(result)
+        self._bytes = {}
+        self._lock = Lock()
+
+    def __iter__(self):
+        return iter(self.FILENAMES)
+
+    def __len__(self):
+        return len(self.FILENAMES)
+
+    def __getitem__(self, filename):
+        if filename not in self.FILENAMES:
+            raise KeyError(filename)
+        with self._lock:
+            if filename not in self._bytes:
+                result = self._result
+                if filename in self.REVIEW_FILES:
+                    content = review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
+                        run_summary=result.summary, source_context=result.source_context,
+                        sampling_evidence=result.sampling_evidence, sampling_result=result.sampling_result,
+                        supplier_view=result.supplier_view, filenames=[filename])[filename]
+                else:
+                    with TemporaryDirectory(prefix='invoice-export-') as directory:
+                        paths = export_pipeline_result(result, output_dir=directory,
+                                                       report_names=[Path(filename).stem])
+                        content = paths[Path(filename).stem].read_bytes()
+                self._bytes[filename] = content
+            return self._bytes[filename]
+
+
 def analyze_upload(content: bytes, *, excluded_verification_types=None,
                    registry_content=None, registry_snapshot_date=None,
                    registry_mode='default', registry_name=None, registry_source=None,
-                   source_name=None, settings_path=DEFAULT_SETTINGS_PATH) -> UploadResult:
-    """Analyze a private working copy; collect downloads before deleting files.
+                   source_name=None, settings_path=DEFAULT_SETTINGS_PATH,
+                   defer_downloads=False) -> UploadResult:
+    """Analyze a private working copy; remove all temporary source/report files.
 
     Upload names are never used as paths. PipelineResult.report_paths refer to
-    deleted temporary files after return; use downloads for all UI downloads.
+    deleted temporary files (or are empty when downloads are deferred); use
+    downloads for all UI downloads. Deferred serialization uses a result snapshot.
     """
     selected_registry = registry_source or resolve_registry_source(
         settings_path=settings_path, mode=registry_mode,
@@ -53,12 +102,15 @@ def analyze_upload(content: bytes, *, excluded_verification_types=None,
                               supplier_register=registry_path,
                               registry_snapshot_date=registry_snapshot_date,
                               registry_source=selected_registry, source_name=source_name,
-                              settings_path=settings_path)
+                              settings_path=settings_path, export_reports=not defer_downloads)
         downloads = {path.name: path.read_bytes() for path in result.report_paths.values()}
-    downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
-                                     run_summary=result.summary, source_context=result.source_context,
-                                     sampling_evidence=result.sampling_evidence,
-                                     sampling_result=result.sampling_result, supplier_view=result.supplier_view))
+    if defer_downloads:
+        downloads = DeferredDownloads(result)
+    else:
+        downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
+                                         run_summary=result.summary, source_context=result.source_context,
+                                         sampling_evidence=result.sampling_evidence,
+                                         sampling_result=result.sampling_result, supplier_view=result.supplier_view))
     return UploadResult(result, downloads, bytes(content),
                         None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)),
                         selected_registry.content, selected_registry.snapshot_date,

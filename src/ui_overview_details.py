@@ -95,6 +95,10 @@ def exclusion_details(result, rule):
 
 def verification_details(result, population='all'):
     """Use existing groups and sample membership, preserving population order."""
+    identities = (result.sampling_result.identity_rows if result.sampling_result is not None else
+                  result.supplier_analysis.rows if result.supplier_analysis is not None else pd.DataFrame())
+    names = (dict(zip(identities['source_row_position'], identities['supplier_text_raw']))
+             if 'supplier_text_raw' in identities else {})
     sampled_positions = {p for v in result.manual_sample for p in v.rows.index}
     flagged_positions = {p for v, d in zip(result.verifications, result.detection_results)
                          if d.flag_reasons for p in v.rows.index}
@@ -108,9 +112,18 @@ def verification_details(result, population='all'):
             continue
         if population == 'flagged' and not any(p in flagged_positions for p in linked):
             continue
+        raw_names = [names.get(p) for p in linked]
+        available_names = list(dict.fromkeys(str(name) for name in raw_names
+                                            if pd.notna(name) and str(name).strip()))
+        supplier = '; '.join(available_names) or 'Leverantör ej identifierad'
+        if len(available_names) > 1:
+            supplier = 'Flera leverantörsnamn: ' + supplier
+        if available_names and any(pd.isna(name) or not str(name).strip() for name in raw_names):
+            supplier += '; leverantör saknas på vissa rader'
         groups.append({'population_position': number, 'verification_id': verification.verification_id,
+                       'supplier': supplier,
                        'row_count': len(linked), 'source_row_positions': linked})
         positions.extend(linked)
     return pd.DataFrame(groups, columns=[
-        'population_position', 'verification_id', 'row_count', 'source_row_positions',
+        'population_position', 'verification_id', 'supplier', 'row_count', 'source_row_positions',
     ]), source_rows(result, positions)
