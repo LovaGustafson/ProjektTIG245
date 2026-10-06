@@ -8,6 +8,9 @@ from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_METHOD, SAMP
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_supplier_panel import show_supplier_scope
 from src.ui_support import display_dataframe
+from src.ui_chart_selection import (
+    selected_category, chart_widget_key, prepare_chart_selections, reset_chart_selections,
+)
 from src.ui_overview_details import (
     source_rows, reason_counts, supplier_details,
     contract_details, exclusion_details, verification_details,
@@ -97,9 +100,9 @@ def show_source_rows(rows):
     show_evidence(rows, 'Underliggande källrader')
 
 
-def show_supplier_drilldowns(result, counts):
+def show_supplier_drilldowns(result, counts, selected=None):
     for row in counts.itertuples(index=False):
-        with st.expander(f'{row.Kategori} · {row.Antal} rader', expanded=False):
+        with st.expander(f'{row.Kategori} · {row.Antal} rader', expanded=row.Status == selected):
             st.write(SUPPLIER_EXPLANATIONS[row.Status])
             matches, candidates, contracts, rows = supplier_details(result, row.Status)
             show_evidence(reason_counts(matches, ['supplier_match_reason']), 'Registrerade orsaker · antal rader')
@@ -112,13 +115,13 @@ def show_supplier_drilldowns(result, counts):
                 show_evidence(contracts, 'Möjliga registeravtal · inget avtal har valts för köpet')
 
 
-def show_contract_drilldowns(result, counts):
+def show_contract_drilldowns(result, counts, selected=None):
     analysis = result.supplier_analysis
     if analysis is None or not analysis.registry.available:
         st.caption('Avtalsevidens saknas när leverantörsmatchningen är otillgänglig.')
         return
     for row in counts.itertuples(index=False):
-        with st.expander(f'{row.Kategori} · {row.Antal} avtalsjämförelser', expanded=False):
+        with st.expander(f'{row.Kategori} · {row.Antal} avtalsjämförelser', expanded=row.Status == selected):
             st.write(CONTRACT_EXPLANATIONS[row.Status])
             contracts, rows = contract_details(result, row.Status)
             show_evidence(reason_counts(contracts, ['contract_period_reason']),
@@ -129,8 +132,8 @@ def show_contract_drilldowns(result, counts):
                'De räknas inte i denna fördelning; deras evidens finns under Leverantörsmatchning.')
 
 
-def show_verification_drilldown(result, key, label, count, explanation):
-    with st.expander(f'{label} · {count} verifikationer', expanded=False):
+def show_verification_drilldown(result, key, label, count, explanation, *, expanded=False):
+    with st.expander(f'{label} · {count} verifikationer', expanded=expanded):
         st.write(explanation)
         groups, rows = verification_details(result, key)
         show_evidence(groups, 'Verifikationer och deras källpositioner')
@@ -180,13 +183,18 @@ def dashboard_tables(result):
 
 
 def show_count_chart(data, *, unit, key, colors=None, empty_message):
-    """Native Streamlit/Vega-Lite bars with exact values, labels and tooltips."""
+    """Select an existing category and open its existing evidence expander."""
     if data.empty or not data['Antal'].sum():
         st.info(empty_message)
         return
     spec = {
         'height': max(120, len(data) * 44),
         'padding': {'right': 35},
+        # Bind once: applying the same point selection to both layers would
+        # produce duplicate Vega signals in the browser. Both marks carry Status.
+        'params': [{'name': 'category', 'views': ['category_bars'], 'select': {
+            'type': 'point', 'fields': ['Status'], 'toggle': False, 'clear': 'dblclick',
+        }}],
         'encoding': {
             'y': {'field': 'Kategori', 'type': 'nominal', 'sort': None,
                   'axis': {'title': None, 'labelLimit': 230}},
@@ -197,21 +205,33 @@ def show_count_chart(data, *, unit, key, colors=None, empty_message):
                         {'field': 'Antal', 'type': 'quantitative', 'title': unit, 'format': 'd'}],
         },
         'layer': [
-            {'mark': {'type': 'bar', 'cornerRadiusEnd': 4, 'size': 23},
-             'encoding': {'color': {'field': 'Status', 'type': 'nominal', 'legend': None,
+            {'name': 'category_bars',
+             'mark': {'type': 'bar', 'cornerRadiusEnd': 4, 'size': 23, 'cursor': 'pointer'},
+             'encoding': {'opacity': {'condition': {'param': 'category', 'value': 1}, 'value': 0.35},
+                          'color': {'field': 'Status', 'type': 'nominal', 'legend': None,
                           'scale': {'domain': data['Status'].tolist(),
                                     'range': colors or ['#126b78'] * len(data)}}}},
-            {'mark': {'type': 'text', 'align': 'left', 'dx': 7},
+            {'mark': {'type': 'text', 'align': 'left', 'dx': 7, 'cursor': 'pointer'},
              'encoding': {'text': {'field': 'Antal', 'type': 'quantitative', 'format': 'd'}}},
         ],
     }
-    st.vega_lite_chart(data, spec, width='stretch', key=key)
+    st.caption('Klicka på en stapel eller dess antal för att öppna underlaget nedan.')
+    event = st.vega_lite_chart(data, spec, width='stretch', key=chart_widget_key(key),
+                               on_select='rerun', selection_mode='category')
+    selected = selected_category(event, data['Status'].tolist())
+    if selected is not None:
+        row = data.loc[data['Status'] == selected].iloc[0]
+        st.info(f'Visar {row.Antal} {unit.lower()} – {row.Kategori}')
+        st.button('Rensa diagramval', key=f'overview_chart:{key}:reset',
+                  on_click=reset_chart_selections, args=(key,))
+    return selected
 
 
 def show_run_summary(result):
     s = result.summary
     if s is None:
         return
+    prepare_chart_selections(result)
     charts = dashboard_tables(result)
     st.subheader('Analysöversikt')
     st.caption('Hela analyskörningen. Tillfälliga vyfilter ändrar inte dessa antal eller exporterna.')
@@ -232,17 +252,17 @@ def show_run_summary(result):
     with left, st.container(border=True):
         st.markdown('#### Populationens flöde')
         st.caption(f'{s.source_rows} källrader = {s.included_rows} kvarvarande + {s.excluded_rows} exkluderade.')
-        show_count_chart(charts['population'], unit='Källrader', key='chart_population',
+        selected_population = show_count_chart(charts['population'], unit='Källrader', key='chart_population',
                          colors=['#126b78', '#788494'], empty_message='Inga inlästa källrader.')
         st.caption('Avser den inlästa tabellen i första kalkylbladet. '
                    'Fullständighet gentemot Proceedo är inte verifierad.')
-        for label, positions in [
-            ('Källpopulation', result.original_data.index),
-            ('Kvarvarande', result.filtering.cleaned_data.index),
-            ('Exkluderade', result.filtering.excluded_data.index),
-            ('Utan användbart verifikations-ID', result.ungrouped_data.index),
+        for category, label, positions in [
+            ('all', 'Källpopulation', result.original_data.index),
+            ('included', 'Kvarvarande', result.filtering.cleaned_data.index),
+            ('excluded', 'Exkluderade', result.filtering.excluded_data.index),
+            ('ungrouped', 'Utan användbart verifikations-ID', result.ungrouped_data.index),
         ]:
-            with st.expander(f'{label} · {len(positions)} rader', expanded=False):
+            with st.expander(f'{label} · {len(positions)} rader', expanded=category == selected_population):
                 st.write('Befintliga källrader i denna del av körningen. Exkluderade rader '
                          'visar samtliga registrerade exkluderingsorsaker. Kvarvarande '
                          'rader är underlag för fortsatt granskning, inte automatiskt godkända.')
@@ -262,20 +282,20 @@ def show_run_summary(result):
                         st.text(issue)
                 show_source_rows(source_rows(result, result.filtering.cleaned_data.index))
         else:
-            show_count_chart(charts['suppliers'], unit='Kvarvarande rader', key='chart_suppliers',
+            selected_supplier = show_count_chart(charts['suppliers'], unit='Kvarvarande rader', key='chart_suppliers',
                              colors=['#126b78', '#b66a12', '#b33d4b', '#788494'],
                              empty_message='Inga kvarvarande rader att matcha.')
-            show_supplier_drilldowns(result, charts['suppliers'])
+            show_supplier_drilldowns(result, charts['suppliers'], selected_supplier)
         st.caption(f'Hela körningen: {s.uncertain_supplier_rows} rader utan säker leverantörsträff. '
                    'Leverantörsidentitet är separat från avtalsefterlevnad. Öppna kategorierna ovan för evidens.')
 
     with st.expander('Varför exkluderades rader?', expanded=False):
         st.caption('Faktiska regelträffar. En rad kan träffa flera regler; staplarna ska inte summeras '
                    'till antal unika exkluderade rader.')
-        show_count_chart(charts['exclusions'], unit='Regelträffar (rader)', key='chart_exclusions',
+        selected_exclusion = show_count_chart(charts['exclusions'], unit='Regelträffar (rader)', key='chart_exclusions',
                          empty_message='Inga exkluderingsorsaker i denna körning.')
         for row in charts['exclusions'].itertuples(index=False):
-            with st.expander(f'{row.Kategori} · {row.Antal} regelträffar', expanded=False):
+            with st.expander(f'{row.Kategori} · {row.Antal} regelträffar', expanded=row.Status == selected_exclusion):
                 show_source_rows(exclusion_details(result, row.Status))
 
     st.subheader('Avvikelser och avtalsperioder')
@@ -288,11 +308,11 @@ def show_run_summary(result):
             'som inte finns tillgängligt i prototypen.')
     with st.container(border=True):
         st.markdown('#### Avtalsperioder vid verifikationsdatum')
-        show_count_chart(charts['contracts'], unit='Avtalsjämförelser', key='chart_contracts',
+        selected_contract = show_count_chart(charts['contracts'], unit='Avtalsjämförelser', key='chart_contracts',
                          colors=STATUS_COLORS, empty_message='Inga avtalsjämförelser kunde göras i denna körning.')
         st.caption('Varje möjligt registeravtal jämförs separat med källradens datum. '
                    'Inom perioden betyder inte att köpet omfattas av avtalet.')
-        show_contract_drilldowns(result, charts['contracts'])
+        show_contract_drilldowns(result, charts['contracts'], selected_contract)
 
     with st.container(border=True, key='sample_overview'):
         st.subheader('Manuellt stickprov')
@@ -301,7 +321,7 @@ def show_run_summary(result):
                  'Valda verifikationer', 'Rader i stickprovet'],
                 [s.eligible_verifications, f'Var {s.sample_interval}:e', s.sampled_verifications, s.sampled_rows]):
             column.metric(label, value)
-        show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
+        selected_sample = show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
                          colors=['#126b78', '#b7c4d2'], empty_message='Urvalspopulationen är tom.')
         st.caption(SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
         sampling = result.sampling_result
@@ -347,7 +367,8 @@ def show_run_summary(result):
                                        f'Stickprovet utgår från var {s.sample_interval}:e '
                                        'verifikation, med ersättning framåt för att hålla leverantörerna unika. '
                                        'Flaggning påverkar inte urvalet. '
-                                       'Övriga grupper tillhör populationen men valdes inte till stickprovet.')
+                                       'Övriga grupper tillhör populationen men valdes inte till stickprovet.',
+                                       expanded=row.Status == selected_sample)
         st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas. '
                    'Se urvalet under Manuell kontroll och hämta underlaget under Export.')
         if s.ungrouped_rows:

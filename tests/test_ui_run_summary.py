@@ -153,7 +153,7 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
     assert review.downloads == downloads_before
 
 
-def test_restored_graphical_overview_with_previous_interaction_state():
+def test_graphical_overview_ignores_legacy_state_and_supports_category_selection():
     data = invoices(21)
     data.loc[0, 'Konto'] = '7698'
     review = analyze_upload(workbook(data), registry_content=workbook(registry()), defer_downloads=True)
@@ -169,7 +169,10 @@ def test_restored_graphical_overview_with_previous_interaction_state():
     for chart in charts:
         spec = json.loads(chart.proto.spec)
         assert [layer['mark']['type'] for layer in spec['layer']] == ['bar', 'text']
-        assert 'params' not in spec
+        assert spec['params'][0]['select']['fields'] == ['Status']
+        assert spec['params'][0]['select']['toggle'] is False
+        assert spec['params'][0]['views'] == [spec['layer'][0]['name']]
+        assert list(chart.proto.selection_mode) == ['category']
         assert spec['encoding']['y']['field'] == 'Kategori'
     assert not any(b.key and b.key.startswith(('overview_kpi_', 'sample_kpi_')) for b in app.button)
     retained = next(e for e in app.expander if e.label.startswith('Kvarvarande ·'))
