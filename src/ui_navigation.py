@@ -2,12 +2,14 @@
 import streamlit as st
 
 from src.ui_filter_panel import clear_ui_filters
+from src.ui_chart_selection import reset_chart_selections
 
 SELECTIONS = ('selected_kpi', 'selected_supplier', 'selected_control')
 
 
 def home():
     clear_ui_filters()
+    reset_chart_selections()
     for key in (*SELECTIONS, 'review_rows', 'kpi_review_rows', 'selected_verification'):
         st.session_state.pop(key, None)
 
