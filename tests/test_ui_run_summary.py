@@ -163,7 +163,8 @@ def test_graphical_overview_ignores_legacy_state_and_supports_category_selection
     app.session_state['chart_population'] = {'selection': {'category': [{'Status': 'included'}]}}
     app.run()
     assert not app.exception
-    assert len(app.metric) == 9
+    assert len(app.metric) == 12
+    assert len(app.tabs[4].metric) == 3  # Population, target and actual sample size.
     charts = app.get('vega_lite_chart')
     assert len(charts) == 5
     for chart in charts:

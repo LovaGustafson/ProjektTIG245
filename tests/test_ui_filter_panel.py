@@ -156,12 +156,12 @@ def test_manual_sample_has_original_fields_and_independent_filters():
     buffer = BytesIO()
     data.to_excel(buffer, index=False)
     app, review = start(buffer.getvalue())
-    manual = next(tab for tab in app.tabs if tab.label == 'Manuell kontroll')
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')
     assert manual.dataframe[0].value['supplier'].tolist() == ['Leverantör 20 AB', 'Leverantör 40 AB']
     assert next(t.value for t in manual.dataframe if 'Vernr' in t.value)['Vernr'].tolist() == ['020', '040']
     choose(app, 'manual', 'Radtext')
     app.text_input(key=key(app, 'manual', 'Radtext', 'text')).set_value('40').run()
-    manual = next(tab for tab in app.tabs if tab.label == 'Manuell kontroll')
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')
     assert next(t.value for t in manual.dataframe if 'Vernr' in t.value)['Vernr'].tolist() == ['040']
     assert manual.dataframe[0].value['verification_id'].tolist() == ['020', '040']
     assert len(app.tabs[0].dataframe[0].value) == 40

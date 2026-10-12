@@ -4,6 +4,7 @@ excluded_accounts:
   - "7699"
 
 # Existing standard verification-type exclusions; see PROJECT_SPEC.md section 9.
+# LR91S and LR95S explicitly confirmed in the 2026-10-12 sampling/filter request.
 # Approval/evidence for selection changes remains OPEN_QUESTIONS.md Q8.
 excluded_verification_types:
   - "AAHV90"
@@ -45,6 +46,8 @@ excluded_verification_types:
   - "KRQ2IN"
   - "KRW1"
   - "KRW9"
+  - "LR91S"
+  - "LR95S"
   - "LRAB"
   - "ZZOM"
   - "ZZUP"

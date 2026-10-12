@@ -10,6 +10,8 @@ from src.output.report_generator import review_tables, review_summary
 from src.presentation import SOURCE_NAMES, check_message
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
+from src.ui_support import select_sample_method
+from src.sampling.manual_sample import SAMPLING_METHODS
 from src.ui_filter_panel import filter_panel, clear_ui_filters
 from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
 from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
@@ -68,6 +70,15 @@ def clear_result():
     home()
     st.session_state.pop('review', None)
     st.session_state.pop('excluded_types', None)
+    st.session_state.pop('manual_sample_method', None)
+    st.session_state.pop('sampling_notice', None)
+
+
+def change_sampling_method(regenerate=False):
+    st.session_state['review'] = select_sample_method(
+        st.session_state['review'], st.session_state['manual_sample_method'], regenerate=regenerate)
+    clear_ui_filters('manual')
+    st.session_state.pop('sampling_notice', None)
 
 
 def change_registry(enabled, reset_upload=False):
@@ -208,7 +219,7 @@ def show_result(review):
     st.subheader('Detaljer och granskning')
     show_dashboard_kpis(result)
     review_tab, excluded_tab, controls, reports, manual = st.tabs(
-        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll'])
+        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
         show_supplier_summary(result.supplier_analysis, result.supplier_view)
@@ -232,6 +243,33 @@ def show_result(review):
     with reports:
         show_reports(review)
     with manual:
+        st.subheader('Urvalsmetod')
+        st.session_state.setdefault('manual_sample_method', result.sampling_result.method)
+        st.radio('Urvalsmetod', list(SAMPLING_METHODS), format_func=SAMPLING_METHODS.get,
+                 key='manual_sample_method', label_visibility='collapsed', on_change=change_sampling_method)
+        sampling = result.sampling_result
+        st.write('Aktiv urvalsmetod: ' + SAMPLING_METHODS[sampling.method])
+        if sampling.method == 'randomized':
+            st.button('Generera nytt slumpmässigt urval', key='regenerate_manual_sample',
+                      on_click=change_sampling_method, args=(True,))
+            st.text(f'Seed: {sampling.seed}')
+            st.caption('Seed och urval sparas under analysen. Samma seed och samma ordnade '
+                       'population med samma identitetsunderlag ger samma urval. Ett nytt seed kan '
+                       'ge samma fakturor, särskilt om få unika leverantörer är möjliga.')
+        else:
+            st.caption(f'Önskat antal beräknas som population // {sampling.interval}. '
+                       'Den stegvisa metoden har inte ett fast mål på 20.')
+        notice = st.session_state.pop('sampling_notice', None)
+        if notice:
+            st.info(notice)
+        for column, label, value in zip(st.columns(3),
+                ['Verifikationer i urvalspopulationen', 'Önskat antal fakturor', 'Faktiskt antal fakturor'],
+                [result.summary.eligible_verifications, sampling.target_size, len(sampling.sample)]):
+            column.metric(label, value)
+        st.caption(f'Urvalsenheten är en verifikation med alla dess rader. '
+                   f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsidentitet; '
+                   'leverantörsunikheten kan begränsa antalet ytterligare.')
+        st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
         st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '
                    'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
         if result.sampling_result is not None and result.sampling_result.shortfall_message:
@@ -361,6 +399,12 @@ def show_filters(review):
                                  registry_snapshot_date=review.registry_snapshot_date,
                                  registry_source=review.registry_source, source_name=review.source_name,
                                  settings_path=review.settings_path, defer_downloads=True)
+        method = st.session_state.get('manual_sample_method', 'systematic')
+        updated = select_sample_method(updated, method)
+        if method == 'randomized':
+            st.session_state['sampling_notice'] = (
+                'Exkluderingarna ändrades. Ett nytt slumpmässigt urval med nytt seed '
+                'har skapats från den omräknade urvalspopulationen.')
         clear_ui_filters()
         st.session_state.pop('selected_verification', None)
         st.session_state.pop('review_rows', None)

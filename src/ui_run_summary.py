@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.models.result import CheckStatus
 from src.models.supplier import SupplierMatchStatus
-from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_METHOD, SAMPLE_IDENTITY
+from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_supplier_panel import show_supplier_scope
 from src.ui_support import display_dataframe
@@ -316,22 +316,24 @@ def show_run_summary(result):
 
     with st.container(border=True, key='sample_overview'):
         st.subheader('Manuellt stickprov')
+        sampling = result.sampling_result
+        randomized = sampling is not None and sampling.method == 'randomized'
         for column, label, value in zip(st.columns(4),
-                ['Verifikationer i urvalspopulationen', 'Ordinarie urvalsintervall',
+                ['Verifikationer i urvalspopulationen', 'Urvalsmetod' if randomized else 'Ordinarie urvalsintervall',
                  'Valda verifikationer', 'Rader i stickprovet'],
-                [s.eligible_verifications, f'Var {s.sample_interval}:e', s.sampled_verifications, s.sampled_rows]):
+                [s.eligible_verifications, 'Slumpmässigt' if randomized else f'Var {s.sample_interval}:e',
+                 s.sampled_verifications, s.sampled_rows]):
             column.metric(label, value)
         selected_sample = show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
                          colors=['#126b78', '#b7c4d2'], empty_message='Urvalspopulationen är tom.')
         st.caption(SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
-        sampling = result.sampling_result
         if sampling is not None:
             st.caption(f'Önskat antal: {sampling.target_size} verifikationer. '
                        'Högst en vald verifikation per leverantörsnyckel/normaliserat namn.')
             if sampling.shortfall_message:
                 st.warning(sampling.shortfall_message)
             with st.expander('Urvalsmetod, leverantörsunikhet och urvalsbeslut', expanded=False):
-                st.write(SAMPLE_METHOD)
+                st.write(sampling_method_description(sampling))
                 st.write(SAMPLE_IDENTITY)
                 show_evidence(sampling.decisions, 'Alla verifikationer · urvalsbeslut och orsaker')
                 show_evidence(sampling.identity_rows, 'Leverantörsidentitet och källposition per rad')
@@ -364,13 +366,12 @@ def show_run_summary(result):
                                    SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
         for row in charts['sample'].itertuples(index=False):
             show_verification_drilldown(result, row.Status, row.Kategori, row.Antal,
-                                       f'Stickprovet utgår från var {s.sample_interval}:e '
-                                       'verifikation, med ersättning framåt för att hålla leverantörerna unika. '
+                                       sampling_method_description(sampling) + ' '
                                        'Flaggning påverkar inte urvalet. '
                                        'Övriga grupper tillhör populationen men valdes inte till stickprovet.',
                                        expanded=row.Status == selected_sample)
         st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas. '
-                   'Se urvalet under Manuell kontroll och hämta underlaget under Export.')
+                   'Se urvalet under Manuellt urval och hämta underlaget under Export.')
         if s.ungrouped_rows:
             st.warning(f'{s.ungrouped_rows} kvarvarande rader saknar användbart verifikations-ID. '
                        'De finns i granskningsunderlaget men ingår inte i det verifikationsbaserade stickprovet.')

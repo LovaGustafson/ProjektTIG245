@@ -1,5 +1,5 @@
 """Presentation helpers and temporary upload handling; no analysis rules."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
@@ -15,6 +15,7 @@ from src.presentation import customer_facing_rows, customer_facing_value
 from src.pipeline import PipelineResult, run_pipeline, export_pipeline_result
 from src.filtering.filter_engine import DEFAULT_SETTINGS_PATH
 from src.ingestion.registry_source import resolve_registry_source, RegistrySource
+from src.sampling.manual_sample import SamplingResult, SAMPLING_METHODS, plan_random_sample, new_sample_seed
 
 
 @dataclass
@@ -28,6 +29,36 @@ class UploadResult:
     registry_source: RegistrySource | None = None
     source_name: str | None = None
     settings_path: object = DEFAULT_SETTINGS_PATH
+    sampling_plans: dict[str, SamplingResult] = field(default_factory=dict)
+
+
+def select_sample_method(review: UploadResult, method: str, *, regenerate=False) -> UploadResult:
+    """Choose a session/run-owned plan and atomically replace its export snapshot.
+
+    A newly analyzed/refiltered UploadResult has no old plans. Switching back to
+    randomized reuses its seed, timestamp and membership until explicit generation
+    or a new analysis. All other analysis results and source occurrences are kept.
+    """
+    if method not in SAMPLING_METHODS:
+        raise ValueError('Unknown manual sampling method')
+    if regenerate and method != 'randomized':
+        raise ValueError('Only randomized sampling can be regenerated')
+    current = review.result.sampling_result
+    if method == current.method and not regenerate:
+        return review
+    plans = {current.method: current, **review.sampling_plans}
+    if method == 'randomized' and (regenerate or method not in plans):
+        previous = plans.get(method)
+        plans[method] = plan_random_sample(review.result.verifications,
+            supplier_analysis=review.result.supplier_analysis,
+            seed=new_sample_seed(previous.seed if previous is not None else None))
+    plan = plans[method]
+    summary = replace(review.result.summary, sample_interval=plan.interval,
+                      sampled_verifications=len(plan.sample),
+                      sampled_rows=sum(len(v.rows) for v in plan.sample))
+    result = replace(review.result, sampling_result=plan, manual_sample=plan.sample,
+                     sampling_evidence=plan.selected_identity_rows, summary=summary, report_paths={})
+    return replace(review, result=result, sampling_plans=plans, downloads=DeferredDownloads(result))
 
 
 class DeferredDownloads(Mapping):
