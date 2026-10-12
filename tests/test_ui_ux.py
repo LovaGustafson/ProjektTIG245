@@ -20,6 +20,13 @@ from tests.test_ui_overview_details import overview_app, expander, evidence_tabl
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
 
+@pytest.fixture
+def fixed_sampling_time(monkeypatch):
+    # Independent analyses now record their own generation timestamp. Hold time
+    # fixed when comparing eager/deferred serialization of equivalent runs.
+    monkeypatch.setattr('src.sampling.manual_sample.sampling_timestamp', lambda: '2026-10-12T12:00:00+00:00')
+
+
 def assert_same_analysis(left, right):
     for field in ('original_data', 'standardized_data', 'ungrouped_data', 'sampling_evidence', 'supplier_view'):
         pd.testing.assert_frame_equal(getattr(left, field), getattr(right, field))
@@ -44,16 +51,20 @@ def assert_same_analysis(left, right):
         assert old.disabled_rules == new.disabled_rules
 
 
-def assert_same_workbook(left, right):
+def assert_same_workbook(left, right, *, separate_generations=False):
     old = pd.read_excel(BytesIO(left), sheet_name=None, dtype=object)
     new = pd.read_excel(BytesIO(right), sheet_name=None, dtype=object)
     assert list(old) == list(new)
     for sheet in old:
+        if separate_generations and sheet == 'Urvalsmetod':
+            # Separate analyses legitimately have distinct generation times.
+            old[sheet] = old[sheet].drop(columns='Genereringstidpunkt (UTC)')
+            new[sheet] = new[sheet].drop(columns='Genereringstidpunkt (UTC)')
         pd.testing.assert_frame_equal(old[sheet], new[sheet])
 
 
 @pytest.mark.parametrize('mode', ['matching', 'unavailable', 'all_excluded'])
-def test_deferred_export_is_identical_and_serializes_only_requested_file(mode):
+def test_deferred_export_is_identical_and_serializes_only_requested_file(mode, fixed_sampling_time):
     data = invoices(43).astype(object)
     data.loc[0, ['Konto', 'Vertyp', 'Huvudtext']] = ['7698', 'FBFM', 'mall']
     data.loc[1, 'Vernr'] = None
@@ -90,7 +101,7 @@ def test_unreadable_register_preserves_exact_recorded_diagnostic_in_deferred_exp
         assert_same_workbook(downloads[filename], eager.downloads[filename])
 
 
-def test_downloads_are_bound_to_result_snapshot_and_new_inputs(tmp_path):
+def test_downloads_are_bound_to_result_snapshot_and_new_inputs(tmp_path, fixed_sampling_time):
     config_path = settings(tmp_path)
     config = yaml.safe_load(config_path.read_text())
     content = workbook(invoices(3))
@@ -147,7 +158,7 @@ def test_manual_supplier_names_use_source_links_and_keep_multiple_or_missing_nam
 
 
 
-def test_filter_rerun_and_home_without_generating_exports():
+def test_filter_rerun_and_home_without_generating_exports(fixed_sampling_time):
     data = invoices(23)
     data.loc[0, 'Vertyp'] = 'FBFM'
     upload = analyze_upload(workbook(data), registry_mode='disabled', defer_downloads=True)
@@ -173,4 +184,3 @@ def test_filter_rerun_and_home_without_generating_exports():
                               excluded_verification_types=['X'])
     assert_same_analysis(changed.result, baseline.result)
     assert_same_workbook(changed.downloads['manual_sample.xlsx'], baseline.downloads['manual_sample.xlsx'])
-

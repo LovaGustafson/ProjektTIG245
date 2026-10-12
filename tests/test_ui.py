@@ -78,7 +78,7 @@ def test_streamlit_result_screen():
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('kpi_')] == ['1', '1', '0', '0', '0']
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1']
     assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel']
-    assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuell kontroll']
+    assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval']
     assert len(app.get('download_button')) == 6
     assert not any('Vissa kontroller har inte bedömts' in warning.value for warning in app.warning)
     assert not app.tabs[2].dataframe

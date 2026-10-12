@@ -2,8 +2,12 @@
 
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
+from random import Random
+from secrets import randbits
 
 import pandas as pd
 import yaml
@@ -14,6 +18,19 @@ from src.supplier_matching.normalization import normalize_supplier
 
 
 DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "config/settings.yaml"
+SAMPLING_METHODS = {'systematic': 'Var 20:e (stegvis)', 'randomized': 'Randomized (slumpmässigt)'}
+RANDOM_SAMPLE_SIZE = 20
+
+
+def sampling_timestamp():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def new_sample_seed(previous=None):
+    seed = randbits(128)
+    while seed == previous:
+        seed = randbits(128)
+    return seed
 
 
 def load_sample_interval(settings_path=DEFAULT_SETTINGS_PATH):
@@ -31,12 +48,33 @@ class SamplingResult:
     target_size: int
     decisions: pd.DataFrame
     identity_rows: pd.DataFrame
+    method: str = 'systematic'
+    interval: int | None = None
+    seed: int | None = None
+    generated_at: str = field(default_factory=lambda: sampling_timestamp())
+
+    @property
+    def population_fingerprint(self):
+        """Identify the ordered selection evidence; source bytes have their own hash."""
+        return sha256(self.identity_rows.to_json(orient='split', force_ascii=False).encode('utf-8')).hexdigest()
+
+    @property
+    def selected_identity_rows(self):
+        selected = self.decisions.loc[self.decisions['decision'] == 'SELECTED', 'population_position']
+        return self.identity_rows.loc[self.identity_rows['population_position'].isin(selected)].copy(deep=True)
 
     @property
     def shortfall_message(self):
         if len(self.sample) == self.target_size:
             return ''
         counts = self.decisions['decision'].value_counts()
+        if self.method == 'randomized':
+            return (f'Stickprovet blev mindre: {len(self.sample)} av önskade {self.target_size} verifikationer. '
+                    f'Hela populationen om {len(self.decisions)} verifikationer har prövats i slumpordning. '
+                    'Inga fler giltiga, unika leverantörer kunde väljas. '
+                    f'{counts.get("DUPLICATE_SUPPLIER", 0)} kandidater har redan vald leverantör och '
+                    f'{counts.get("UNUSABLE_IDENTITY", 0)} har saknad eller flera leverantörsidentiteter. '
+                    'Återstående platser fylls inte med dubletter. Se urvalsbesluten för orsaker och källrader.')
         return (f'Stickprovet blev mindre: {len(self.sample)} av önskade {self.target_size} verifikationer. '
                 'Inga fler giltiga, unika leverantörer kunde väljas framåt från urvalspositionerna. '
                 f'Överhoppade kandidater: {counts.get("DUPLICATE_SUPPLIER", 0)} med redan vald leverantör, '
@@ -109,10 +147,63 @@ def plan_manual_sample(
     if type(interval) is not int or interval <= 0:
         raise ValueError("manual_sample_interval must be a positive integer")
 
+    verifications, identities, decisions, names_by_position = _prepare_candidates(
+        analyzed_verifications, supplier_analysis)
+    chosen, seen_keys, seen_names = [], {}, {}
+    cursor = 0
+    for nominal in range(interval, len(verifications) + 1, interval):
+        cursor = max(nominal, cursor + 1)
+        while cursor <= len(verifications):
+            decision = decisions[cursor - 1]
+            decision['nominal_position'] = nominal
+            if _select_candidate(decision, names_by_position[cursor], seen_keys, seen_names,
+                                 'Första giltiga unika leverantören från denna urvalsposition.'):
+                chosen.append(cursor)
+                break
+            cursor += 1
+    return SamplingResult(_copy_sample(verifications, chosen), len(verifications) // interval,
+                          _decision_table(decisions), identities, interval=interval)
+
+
+def plan_random_sample(analyzed_verifications: Iterable[Verification], *,
+                       seed: int | None = None, supplier_analysis=None) -> SamplingResult:
+    """Uniformly shuffle the full population, then accept up to 20 unique suppliers.
+
+    Every verification receives an equally random priority, independently of
+    flags, matching confidence, supplier-view classification and interval slots.
+    Supplier uniqueness constrains final inclusion probabilities. Missing/multiple
+    identities are unusable under the same rules as systematic sampling.
+    The generator is local: no global RNG state is read or changed. The same seed
+    and ordered population/identity evidence reproduce the selected occurrences.
+    Display/export retain population order; draw_position records random priority.
+    """
+    seed = new_sample_seed() if seed is None else seed
+    if type(seed) is not int or seed < 0:
+        raise ValueError('sampling seed must be a non-negative integer')
+    verifications, identities, decisions, names_by_position = _prepare_candidates(
+        analyzed_verifications, supplier_analysis)
+    order = list(range(1, len(verifications) + 1))
+    Random(seed).shuffle(order)
+    for draw_position, position in enumerate(order, 1):
+        decisions[position - 1]['draw_position'] = draw_position
+        decisions[position - 1]['selection_reason'] = 'Urvalsmålet uppnåddes innan kandidaten prövades.'
+    chosen, seen_keys, seen_names = [], {}, {}
+    for position in order:
+        if _select_candidate(decisions[position - 1], names_by_position[position], seen_keys, seen_names,
+                             'Vald från hela populationen i seedstyrd slumpordning; unik leverantör.'):
+            chosen.append(position)
+            if len(chosen) == RANDOM_SAMPLE_SIZE:
+                break
+    return SamplingResult(_copy_sample(verifications, sorted(chosen)), RANDOM_SAMPLE_SIZE,
+                          _decision_table(decisions, randomized=True), identities,
+                          method='randomized', seed=seed)
+
+
+def _prepare_candidates(analyzed_verifications, supplier_analysis):
+    """Shared, unchanged identity rules for both selection methods."""
     verifications = list(analyzed_verifications)
     if any(not isinstance(item, Verification) for item in verifications):
         raise TypeError("analyzed_verifications must contain Verification objects, not Excel rows")
-
     identities = _supplier_identities(verifications, supplier_analysis)
     groups = {p: rows for p, rows in identities.groupby('population_position', sort=False)}
     decisions, names_by_position = [], {}
@@ -130,29 +221,29 @@ def plan_manual_sample(
             identity_reason=reason, decision='NOT_CANDIDATE',
             selection_reason='Inte prövad enligt urvalsordningen.', nominal_position=None,
             duplicate_of_population_position=None))
-    chosen, seen_keys, seen_names = [], {}, {}
-    cursor = 0
-    for nominal in range(interval, len(verifications) + 1, interval):
-        cursor = max(nominal, cursor + 1)
-        while cursor <= len(verifications):
-            decision = decisions[cursor - 1]
-            decision['nominal_position'] = nominal
-            duplicates = [seen_names[name] for name in names_by_position[cursor] if name in seen_names]
-            if decision['supplier_key'] in seen_keys:
-                duplicates.append(seen_keys[decision['supplier_key']])
-            if not decision['identity_usable']:
-                decision.update(decision='UNUSABLE_IDENTITY', selection_reason=decision['identity_reason'])
-            elif duplicates:
-                decision.update(decision='DUPLICATE_SUPPLIER',
-                    selection_reason='Leverantörsnyckeln eller det normaliserade namnet finns redan i stickprovet.',
-                    duplicate_of_population_position=min(duplicates))
-            else:
-                decision.update(decision='SELECTED', selection_reason='Första giltiga unika leverantören från denna urvalsposition.')
-                chosen.append(cursor)
-                seen_keys[decision['supplier_key']] = cursor
-                seen_names.update({name: cursor for name in names_by_position[cursor]})
-                break
-            cursor += 1
+    return verifications, identities, decisions, names_by_position
+
+
+def _select_candidate(decision, names, seen_keys, seen_names, selected_reason):
+    duplicates = [seen_names[name] for name in names if name in seen_names]
+    if decision['supplier_key'] in seen_keys:
+        duplicates.append(seen_keys[decision['supplier_key']])
+    if not decision['identity_usable']:
+        decision.update(decision='UNUSABLE_IDENTITY', selection_reason=decision['identity_reason'])
+    elif duplicates:
+        decision.update(decision='DUPLICATE_SUPPLIER',
+            selection_reason='Leverantörsnyckeln eller det normaliserade namnet finns redan i stickprovet.',
+            duplicate_of_population_position=min(duplicates))
+    else:
+        decision.update(decision='SELECTED', selection_reason=selected_reason)
+        position = decision['population_position']
+        seen_keys[decision['supplier_key']] = position
+        seen_names.update({name: position for name in names})
+        return True
+    return False
+
+
+def _copy_sample(verifications, chosen):
     sample = []
     for position in chosen:
         verification = verifications[position - 1]
@@ -165,11 +256,14 @@ def plan_manual_sample(
                         rows.iat[row_position, column_position]
                     )
         sample.append(Verification(deepcopy(verification.verification_id), rows))
-    decision_table = pd.DataFrame(decisions, columns=[
+    return sample
+
+
+def _decision_table(decisions, *, randomized=False):
+    return pd.DataFrame(decisions, columns=[
         'population_position', 'verification_id', 'supplier_key', 'identity_usable', 'identity_reason',
         'decision', 'selection_reason', 'nominal_position', 'duplicate_of_population_position',
-    ])
-    return SamplingResult(sample, len(verifications) // interval, decision_table, identities)
+    ] + (['draw_position'] if randomized else []))
 
 
 def create_manual_sample(analyzed_verifications, *, settings_path=DEFAULT_SETTINGS_PATH,

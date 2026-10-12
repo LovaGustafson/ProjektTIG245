@@ -191,7 +191,8 @@ def test_refilter_and_new_upload_clear_chart_state_without_changing_analysis_or_
             select(app, 'chart_' + chart, category)
     assert not upload.downloads._bytes
     assert_same_analysis(original, upload.result)
-    assert_same_workbook(upload.downloads['samlad_kontrollfil.xlsx'], review.downloads['samlad_kontrollfil.xlsx'])
+    assert_same_workbook(upload.downloads['samlad_kontrollfil.xlsx'], review.downloads['samlad_kontrollfil.xlsx'],
+                        separate_generations=True)
     previous_id = chart_element(app, 'chart_population').proto.id
     app.multiselect(key='excluded_types').set_value(['X', 'FBFM']).run()
     assert not app.exception

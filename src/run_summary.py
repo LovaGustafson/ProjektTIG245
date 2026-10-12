@@ -11,11 +11,23 @@ SAMPLE_METHOD = ('Ordinarie intervallpositioner prövas i populationens ordning.
                  'eller saknad/flera leverantörsidentiteter prövas nästa verifikation framåt. '
                  'Nästa intervallposition flyttas inte, men redan passerade kandidater prövas inte igen. '
                  'Ingen återgång till tidigare positioner eller utfyllnad med dubletter görs.')
+RANDOM_SAMPLE_METHOD = ('Hela urvalspopulationen får en seedstyrd slumpordning med lika slumpmässig '
+                        'prioritet för varje verifikation. Kandidater prövas utan återläggning tills '
+                        '20 verifikationer med unika leverantörer valts eller populationen är uttömd. '
+                        'Saknad/flera leverantörsidentiteter och redan valda leverantörer hoppas över. '
+                        'Leverantörsunikheten begränsar den slutliga sannolikheten att ingå. '
+                        'Flaggning, risk, leverantörsrankning och det stegvisa stickprovet påverkar inte slumpningen. '
+                        'Resultatet visas i populationens ordning; slumpordningen sparas i urvalsbesluten.')
 SAMPLE_IDENTITY = ('Stark träff använder organisationsnummer; annars används exakt normaliserat '
                    'leverantörsnamn extraherat ur Huvudtext. Alla rader i verifikationen måste ha samma nyckel. '
                    'Varken samma nyckel eller samma normaliserade namn får väljas igen. '
                    'Namnnyckeln bekräftar inte juridisk identitet. Motp används inte. '
                    'Intern/extern-klassificering för leverantörsvyn påverkar inte stickprovet.')
+
+
+def sampling_method_description(sampling_result):
+    return (RANDOM_SAMPLE_METHOD if sampling_result is not None and sampling_result.method == 'randomized'
+            else SAMPLE_METHOD)
 
 
 @dataclass(frozen=True)
@@ -25,7 +37,7 @@ class RunSummary:
     excluded_rows: int
     ungrouped_rows: int
     eligible_verifications: int
-    sample_interval: int
+    sample_interval: int | None
     sampled_verifications: int
     sampled_rows: int
     flagged_verifications: int

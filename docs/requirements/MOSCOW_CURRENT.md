@@ -1,6 +1,6 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-10-02
+Last updated: 2026-10-12
 
 This document contains the current customer requirements for the TIG245 prototype.
 
@@ -20,6 +20,24 @@ The feature-package request of 2026-09-24 confirms the following work within M2/
 - Present actual pipeline counts, exclusions, contract-date outcomes, unavailable controls and traceability. No artificial reviewer-completion status is introduced.
 
 These confirmations do not reopen duplicate removal or authorize autonomous controls, Proceedo integration or other Won't Have functionality.
+
+The 2026-10-12 sampling/filter request confirms adding `LR91S` and `LR95S` to
+the existing default verification-type exclusions (M2/M4/M5/M6). Users can
+reinclude either through the existing filter UI. Excluded occurrences and all
+overlapping reasons remain accounted for; both sampling methods use the same
+retained, grouped population.
+
+The same request and explicit product decision confirm two manual-sampling
+methods (M5/M6): systematic remains the default with its existing target
+floor(grouped population / 20), supplier uniqueness and forward replacements.
+Randomized independently draws from the full grouped population with a fixed
+target of 20, without replacement and with the same supplier-identity rules.
+Different target sizes between methods are explicitly accepted. Randomized
+sampling uses a saved seed, generation time and source/identity evidence; the
+sample remains stable during UI reruns and view filtering. Explicit generation
+creates a new seed; a new analysis/refiltering cannot reuse an old population's
+sample. Both methods expose target/actual counts, shortfall reasons and exports
+of the active sample. No risk ranking or detection outcome weights the draw.
 
 The 2026-09-29 presentation clarification confirms that numbered `Slutk` markers
 must also be removed from customer-facing Huvudtext and extracted-supplier text
@@ -152,11 +170,13 @@ Status:
 - SELECTION IMPLEMENTED / CUSTOMER EVIDENCE REQUIREMENTS UNRESOLVED
 
 Confirmed rule and current behavior:
-- The target remains floor(grouped population / 20), starting from nominal positions 20, 40, 60, etc. in first-appearance order after base filtering, grouping and analysis.
+- The default systematic method retains target floor(grouped population / 20), starting from nominal positions 20, 40, 60, etc. in first-appearance order after base filtering, grouping and analysis. The 2026-10-12 product decision explicitly accepts different targets for the two methods.
 - The 2026-09-30 change prevents repeated supplier keys/normalized names. At an unusable or repeated supplier, selection continues forward to the next valid unique supplier. No previously passed position is revisited; the nominal interval positions stay fixed.
 - Supplier keys use organization numbers from strong matches, otherwise the existing normalization of supplier names extracted from Huvudtext. All rows in a selected verification must have one consistent key; missing/multiple identities are explained outside the sample. Motp is never used.
 - Insufficient candidates produce a smaller sample with target/actual counts and recorded reasons. No duplicate backfilling is allowed. This is sample selection, not source-occurrence deduplication.
-- Selection is at verification level and independent of flags; selected groups retain their rows. The configured interval is 20.
+- Randomized has a fixed target of 20. A local seeded generator shuffles the entire grouped population; candidates are accepted in that random order using the same identity and uniqueness rules until 20 are selected or the population is exhausted. Each verification has equally random priority; supplier uniqueness constrains final inclusion probabilities. The systematic sample, flags, risk and supplier-view classification do not affect the draw. Results are displayed/exported in population order, with draw order retained as evidence.
+- Method selection, random seed, timestamp and membership persist within the analysis/session, including switching back to a previously generated method. Explicit regeneration creates a new seed and recomputes the draw (membership may coincide when few choices exist). Refiltering rebuilds both plans for the new analysis and preserves the selected method; starting a new analysis defaults to systematic. Exports always reflect the active sample.
+- Selection is at verification level and independent of flags; selected groups retain their rows. The configured systematic interval is 20.
 - Changes to base filtering, grouping or ordering can change the sample; temporary UI view filters do not.
 - The selection criteria must be transparent and reproducible.
 - UI and export now show population count, interval, selected verifications/rows, ordering and selected source positions. Customer retention/approval requirements remain open.

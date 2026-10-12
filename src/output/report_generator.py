@@ -7,6 +7,7 @@ from decimal import Decimal
 from io import BytesIO
 from itertools import chain
 from pathlib import Path
+from platform import python_version
 
 import pandas as pd
 
@@ -15,7 +16,8 @@ from src.models.result import CheckResult
 from src.models.verification import Verification
 from src.supplier_matching.analysis import enrich_rows
 from src.supplier_matching.extraction import normalize_header_text
-from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_METHOD, SAMPLE_IDENTITY
+from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
+from src.sampling.manual_sample import SAMPLING_METHODS
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -91,9 +93,16 @@ def audit_sheets(data, *, source_context=None, run_summary=None, sampling_eviden
                                                 columns=['Regel', 'Antal träffade källrader'])
         sheets['Urvalsmetod'] = pd.DataFrame([{
             'Population': SAMPLE_POPULATION, 'Ordning': SAMPLE_ORDER,
-            'Metod': SAMPLE_METHOD, 'Leverantörsunikhet': SAMPLE_IDENTITY,
+            'Urvalsmetod': SAMPLING_METHODS[sampling_result.method] if sampling_result is not None else SAMPLING_METHODS['systematic'],
+            'Metod': sampling_method_description(sampling_result), 'Leverantörsunikhet': SAMPLE_IDENTITY,
             'Intervall': run_summary.sample_interval,
+            'Genereringstidpunkt (UTC)': sampling_result.generated_at if sampling_result is not None else None,
+            # Excel numbers lose precision after 15 digits. Seeds are literal text.
+            'Seed': str(sampling_result.seed) if sampling_result is not None and sampling_result.seed is not None else None,
+            'Slumpgenerator': f'random.Random.shuffle (MT19937), Python {python_version()}, randomized-v1' if sampling_result is not None and sampling_result.method == 'randomized' else None,
+            'Populationens identitetsunderlag SHA-256': sampling_result.population_fingerprint if sampling_result is not None else None,
             'Antal verifikationer i populationen': run_summary.eligible_verifications,
+            'Antal verifikationer med användbar leverantörsidentitet': int(sampling_result.decisions.identity_usable.sum()) if sampling_result is not None else None,
             'Antal valda verifikationer': run_summary.sampled_verifications,
             'Antal valda rader': run_summary.sampled_rows,
             'Önskat antal verifikationer': sampling_result.target_size if sampling_result is not None else None,

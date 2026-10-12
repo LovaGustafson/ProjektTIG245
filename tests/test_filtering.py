@@ -53,18 +53,18 @@ def test_configurable_types_and_empty_input(tmp_path):
 def test_all_standard_types_numeric_accounts_overlap_and_duplicate_indexes():
     from src.filtering.filter_engine import load_exclusions
     types = load_exclusions()['excluded_verification_types']
-    assert len(types) == len(set(types)) == 42
+    assert len(types) == len(set(types)) == 44
     assert types.count('FMATB') == 1
     source = pd.DataFrame({'verification_type': types + ['X'] * 5 + [None],
-                           'account': ['4000'] * 42 + [7698, 7699.0, ' 7698.0 ', '7699 ', None, '4000']},
-                          index=[0] * 48)
+                           'account': ['4000'] * len(types) + [7698, 7699.0, ' 7698.0 ', '7699 ', None, '4000']},
+                          index=[0] * (len(types) + 6))
     before = source.copy(deep=True)
     result = filter_rows(source)
-    assert len(result.excluded_data) == 46
+    assert len(result.excluded_data) == len(types) + 4
     assert len(result.cleaned_data) == 2
     assert result.account_count == 4
-    assert result.verification_type_count == 42
-    assert all(result.reasons[:46])
+    assert result.verification_type_count == len(types)
+    assert all(result.reasons[:len(types) + 4])
     pd.testing.assert_frame_equal(source, before)
     overlap = filter_rows(pd.DataFrame({'account': [7698], 'verification_type': [' KR01 ']}))
     assert overlap.reasons == ('Exkluderad – konto 7698; verifikationstyp KR01',)
@@ -82,3 +82,28 @@ def test_reinclude_all_types_and_missing_columns():
         assert filter_column_errors(incomplete)
         result = filter_rows(incomplete)
         assert len(result.cleaned_data) + len(result.excluded_data) == len(source)
+
+
+def test_lr_defaults_reinclusion_overlap_and_source_preservation():
+    from src.filtering.filter_engine import load_exclusions
+    defaults = load_exclusions()['excluded_verification_types']
+    source = pd.DataFrame({
+        'verification_id': ['1', '2', '3', '4', '5'],
+        'account': ['4000', '4000', '7698', '4000', '4000'],
+        'verification_type': ['LR91S', ' LR95S ', 'LR91S', 'LR91', 'FBFM'],
+        'header_text': ['Syntetisk AB Prelb 1'] * 5,
+    })
+    before = source.copy(deep=True)
+    result = filter_rows(source)
+    assert result.cleaned_data.index.tolist() == [3]
+    assert result.excluded_data.index.tolist() == [0, 1, 2, 4]
+    assert result.verification_type_count == 4
+    assert result.account_count == 1
+    assert result.rule_details['verification_type']['LR91S'] == [0, 2]
+    assert result.rule_details['verification_type']['LR95S'] == [1]
+    assert result.reasons[2] == 'Exkluderad – konto 7698; verifikationstyp LR91S'
+    restored = filter_rows(source, excluded_verification_types=[
+        value for value in defaults if value not in {'LR91S', 'LR95S'}])
+    assert restored.cleaned_data.index.tolist() == [0, 1, 3]
+    assert restored.excluded_data.index.tolist() == [2, 4]
+    pd.testing.assert_frame_equal(source, before)

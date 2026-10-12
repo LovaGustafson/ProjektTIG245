@@ -157,3 +157,49 @@ def test_metadata_header_upload_filters_rendering_and_export(tmp_path):
         assert len(pd.read_excel(exported, sheet_name='Bortfiltrerade')) == 5
     assert path.read_bytes() == before
     assert path.stat().st_mtime_ns == mtime
+
+
+def test_lr_default_filters_ui_population_kpis_and_export():
+    from tests.test_feature_package import invoices
+    data = invoices(44)
+    data['Huvudtext'] = [f'Syntetisk leverantör {i} AB Prelb 1' for i in range(44)]
+    data.loc[:3, 'Vertyp'] = ['LR91S', 'LR95S', 'LR91S', 'FBFM']
+    data.loc[2, 'Konto'] = '7698'
+    original = content(data)
+    review = analyze_upload(original, registry_mode='disabled', defer_downloads=True)
+    app = AppTest.from_file(str(APP), default_timeout=20)
+    app.session_state['review'] = review
+    app.run()
+    assert not app.exception
+    assert {'LR91S', 'LR95S', 'FBFM'} <= set(app.multiselect(key='excluded_types').value)
+    assert app.button(key='kpi_total').label.startswith('**44**')
+    assert app.button(key='kpi_review').label.startswith('**40**')
+    assert app.button(key='kpi_excluded').label.startswith('**4**')
+    assert app.button(key='kpi_account').label.startswith('**1**')
+    assert app.button(key='kpi_verification_type').label.startswith('**4**')
+    assert review.result.summary.eligible_verifications == 40
+    assert [v.verification_id for v in review.result.manual_sample] == ['24', '44']
+    assert review.result.summary.exclusion_counts['verification_type: LR91S'] == 2
+    assert review.result.summary.exclusion_counts['verification_type: LR95S'] == 1
+    exported = pd.read_excel(BytesIO(review.downloads['samlad_kontrollfil.xlsx']), sheet_name=None)
+    assert len(exported['Granskning']) == 40
+    assert len(exported['Bortfiltrerade']) == 4
+    assert exported['Bortfiltrerade'].Exkluderingsorsak.iloc[2] == (
+        'Exkluderad – konto 7698; verifikationstyp LR91S')
+    assert exported['Urvalsmetod']['Antal verifikationer i populationen'].iloc[0] == 40
+
+    for verification_type, count in [('LR91S', 41), ('LR95S', 42)]:
+        app.multiselect(key='excluded_types').unselect(verification_type).run()
+        assert not app.exception
+        changed = app.session_state['review']
+        assert changed.result.summary.eligible_verifications == count
+        assert app.button(key='kpi_review').label.startswith(f'**{count}**')
+        assert len(pd.read_excel(BytesIO(changed.downloads['granskning.xlsx']))) == count
+        assert changed.source_content == original
+        pd.testing.assert_frame_equal(changed.result.original_data, review.result.original_data)
+    assert [v.verification_id for v in changed.result.manual_sample] == ['22', '42']
+    assert changed.result.filtering.excluded_data.index.tolist() == [2, 3]
+    next(b for b in app.button if b.label == 'Återställ filter till standard').click().run()
+    assert not app.exception
+    assert {'LR91S', 'LR95S'} <= set(app.multiselect(key='excluded_types').value)
+    assert app.session_state['review'].result.summary.eligible_verifications == 40

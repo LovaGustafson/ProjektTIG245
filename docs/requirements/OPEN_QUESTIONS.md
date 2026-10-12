@@ -1,6 +1,6 @@
 # Open Customer Questions
 
-Current scope and confirmed facts are defined in [MOSCOW_CURRENT.md](MOSCOW_CURRENT.md); current technical behavior is described in [PROJECT_SPEC.md](../../PROJECT_SPEC.md). The questions below are unresolved, not implementation authorization. Proceedo is the confirmed source system and the sampling interval is 20.
+Current scope and confirmed facts are defined in [MOSCOW_CURRENT.md](MOSCOW_CURRENT.md); current technical behavior is described in [PROJECT_SPEC.md](../../PROJECT_SPEC.md). The questions below are unresolved, not implementation authorization. Proceedo is the confirmed source system. Systematic sampling retains interval 20; the 2026-10-12 product decision additionally confirms randomized sampling with a fixed target of 20.
 
 ## Q1 — Duplicate definition
 
@@ -30,6 +30,13 @@ Status: Open
 - Where should that evidence appear, and what must a reviewer retain to reproduce or verify the sample?
 
 The 2026-09-24 feature package records population, ordering, exclusions, interval and selected source positions in UI/export. The explicit 2026-09-30 priority-2 request adds supplier uniqueness, forward replacements, target/actual counts, per-verification decisions and per-row identity evidence. The user confirmed normalized extracted names as fallback and keeping missing/multiple identities outside the sample. Customer requirements for further evidence, retention and approval remain open. The interval is already confirmed; this question alone does not authorize changing the selection method.
+
+The 2026-10-12 request and explicit product decision authorize a separate randomized
+method with target 20 while preserving systematic target floor(population / 20).
+The different sizes are accepted. Seed, timestamp, method, population/identity
+evidence, target/actual counts and shortfall reasons are included in the existing
+exports. Further retention/approval requirements remain open; they do not block
+these explicitly confirmed sampling changes.
 
 ## Q3 — Source-occurrence traceability
 
@@ -97,7 +104,7 @@ Status: Open
 - What approval and supporting evidence are required when changing the standard verification-type exclusions or selecting additional types?
 - Who may make such changes, and what selection history or run-specific configuration must accompany the review material and resulting sample?
 
-Confirmed account exclusions and the existing standard verification-type set are unchanged. The 2026-09-24 request separately authorizes exact internal-supplier exclusions for Försörjningsförvaltning, Fastighetstöd and mall. Approval/evidence for other selection changes remains open; UI/configuration capabilities alone do not authorize new business exclusions.
+Confirmed account exclusions remain unchanged. The 2026-10-12 request explicitly adds LR91S and LR95S to the existing standard verification-type set, with reinclusion through the existing UI. The 2026-09-24 request separately authorizes exact internal-supplier exclusions for Försörjningsförvaltning, Fastighetstöd and mall. Approval/evidence for other selection changes remains open; UI/configuration capabilities alone do not authorize new business exclusions.
 
 ## Q9 — External AI/Codex governance
 

@@ -243,7 +243,8 @@ def test_dashboard_sampling_and_register_remove_restore():
         'Exkluderade · rader': '0', 'Flaggade · verifikationer': '0',
         'Manuellt urval · verifikationer': '1',
         'Verifikationer i urvalspopulationen': '100', 'Ordinarie urvalsintervall': 'Var 20:e',
-        'Valda verifikationer': '1', 'Rader i stickprovet': '1'}
+        'Valda verifikationer': '1', 'Rader i stickprovet': '1',
+        'Önskat antal fakturor': '5', 'Faktiskt antal fakturor': '1'}
     assert any('1 av önskade 5' in warning.value for warning in app.warning)
     assert app.session_state['review'].registry_source.kind == 'uploaded'
     next(b for b in app.button if b.label == 'Ta bort register').click().run()

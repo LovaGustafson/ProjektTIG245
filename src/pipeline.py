@@ -120,10 +120,7 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                       'source_sha256': sha256(Path(input_path).read_bytes()).hexdigest(),
                       'source_sheet': original.attrs.get('source_sheet'),
                       'source_header_row': original.attrs.get('source_header_row')}
-    selected_positions = sampling_result.decisions.loc[
-        sampling_result.decisions['decision'] == 'SELECTED', 'population_position']
-    sampling_evidence = sampling_result.identity_rows.loc[
-        sampling_result.identity_rows['population_position'].isin(selected_positions)].copy(deep=True)
+    sampling_evidence = sampling_result.selected_identity_rows
     todos = filtering.todos + (
         'TODO / awaiting AK: invalid-identity routing, Bild linkage and business rule confirmation',
         'TODO: persistent export of validation and nonflagged detection results',

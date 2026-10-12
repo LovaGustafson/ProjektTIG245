@@ -2,7 +2,7 @@
 
 ## TIG245 — Current Technical Specification
 
-Last updated: 2026-09-30
+Last updated: 2026-10-12
 
 ---
 
@@ -44,7 +44,7 @@ The system currently focuses on:
 - grouping rows into verifications,
 - running currently supported checks,
 - performing supplier-name matching against an optional supplier/contract register,
-- producing a deterministic manual sample,
+- producing a reproducible systematic or randomized manual sample,
 - presenting review results in Streamlit,
 - exporting review material.
 
@@ -184,7 +184,7 @@ Technical validation is not a business deviation or approval. Validation must no
 
 # 9. Filtering and exclusions
 
-`src/filtering/filter_engine.py` applies account and selected `verification_type` exclusions using standardized fields, never fixed Excel column positions. Confirmed account exclusions are `7698` and `7699`. The existing standard verification-type set is the 42 values in `config/settings.yaml` under `excluded_verification_types`, including `FBFM`; this document does not redefine that set.
+`src/filtering/filter_engine.py` applies account and selected `verification_type` exclusions using standardized fields, never fixed Excel column positions. Confirmed account exclusions are `7698` and `7699`. The standard verification-type set is the 44 values in `config/settings.yaml` under `excluded_verification_types`, including `FBFM`. The 2026-10-12 request adds `LR91S` and `LR95S` to the existing defaults. Both remain selectable for reinclusion through the existing UI. They affect the retained population, grouping and all manual sampling methods through the same filter rules, with preserved source rows and overlapping exclusion reasons.
 
 Account comparisons normalize integral numeric representations and surrounding whitespace. Verification-type comparisons trim surrounding whitespace. Blank filter values do not match these exclusions. Missing/ambiguous filter columns produce explicit messages; other applicable rules can still run, so filtering may be incomplete.
 
@@ -254,11 +254,47 @@ Pending Q12, `contract_period.end_date_field` and `inclusive_boundaries` remain 
 
 # 13. Manual sampling
 
-The 2026-09-30 priority-2 request adds **one selected verification per supplier** to the nominal every-20th method. `src/sampling/manual_sample.py` retains `manual_sample_interval: 20`, the builder's first-appearance order, complete groups and analysis before sampling. Target size is floor(grouped population / interval); nominal positions remain 20, 40, 60, etc. Each slot scans forward from its nominal position or after the last examined candidate, whichever is later, until a usable unique supplier is found. There is no randomization, wraparound, revisiting passed positions or duplicate backfilling. The sample can therefore be smaller even when earlier, unvisited positions contain other suppliers.
+The 2026-09-30 priority-2 request adds **one selected verification per supplier** to the nominal every-20th method. `src/sampling/manual_sample.py` retains `manual_sample_interval: 20`, the builder's first-appearance order, complete groups and analysis before sampling. Target size is floor(grouped population / interval); nominal positions remain 20, 40, 60, etc. Each slot scans forward from its nominal position or after the last examined candidate, whichever is later, until a usable unique supplier is found. This systematic method has no randomization, wraparound, revisiting passed positions or duplicate backfilling. The sample can therefore be smaller even when earlier, unvisited positions contain other suppliers. The 2026-10-12 product decision explicitly preserves this method and its population-dependent target as the default.
 
 Per source row, an existing `STRONG_MATCH` supplies `org:<matched_organization_number>`. Otherwise the user's explicit fallback confirmation permits `name:<normalize_supplier(extract_supplier(header_text))>`, including ambiguous/no-match/unavailable register cases. This reuses existing Unicode, case, whitespace, punctuation and equivalent legal-form normalization, never Motp, fuzzy regrouping or candidate selection. A name key is not proof of legal identity. Every row in a verification must have a key and the group must contain exactly one distinct key; missing or multiple identities remain outside the sample with reasons. Different strong aliases sharing an organization number share one key. Both a previously selected key and a previously selected normalized extracted name prevent reselection. Ambiguous supplier-match statuses themselves remain unchanged.
 
-`plan_manual_sample` returns the copied sample, target size, one decision per population verification and identity evidence per source occurrence. Decisions distinguish selected, repeated supplier, unusable identity and not examined according to the order; they retain nominal/actual positions and the previously selected position for duplicates. `create_manual_sample` remains a list-returning convenience wrapper. `PipelineResult.sampling_result` preserves the plan, and `sampling_evidence` now comes from actual selections, including replacements, rather than a modulo calculation. UI, CLI and export explain shortfalls. No source occurrence is deleted or modified; missing/multiple supplier identities remain in the complete review population. Sampling stays independent of flags and of supplier-view classification. Fewer than 20 groups still gives an empty sample. Q2 remains open for further retention/approval requirements.
+`plan_manual_sample` returns the copied sample, target size, one decision per population verification and identity evidence per source occurrence. Decisions distinguish selected, repeated supplier, unusable identity and not examined according to the order; they retain nominal/actual positions and the previously selected position for duplicates. `create_manual_sample` remains a list-returning convenience wrapper. `PipelineResult.sampling_result` preserves the plan, and `sampling_evidence` now comes from actual selections, including replacements, rather than a modulo calculation. UI, CLI and export explain shortfalls. No source occurrence is deleted or modified; missing/multiple supplier identities remain in the complete review population. Sampling stays independent of flags and of supplier-view classification. For systematic sampling, fewer than 20 groups still gives an empty sample. Q2 remains open for further retention/approval requirements.
+
+The separately confirmed randomized method, `plan_random_sample`, has a fixed
+target of 20, even for populations below/above 400. It gives every verification in
+the full grouped population a random priority with a local `random.Random(seed)`
+and `shuffle`; it never draws from the systematic sample. Candidates are examined
+without replacement in that order using the shared, unchanged identity/uniqueness
+checks, until 20 are selected or the population is exhausted. Random priority is
+uniform across verifications; supplier uniqueness constrains final inclusion
+probabilities. No risk, flag, supplier ranking or view classification weights the
+draw. Fewer than 20 possible unique suppliers yields the maximum available sample
+and an explicit shortfall with population, repeated-supplier and unusable-identity
+counts. Empty populations yield an empty sample with target 20. Selected complete
+groups are copied and returned in population order; `draw_position` in decisions
+preserves the random order. Systematic decisions retain their existing meaning.
+
+Both plans record method, interval (systematic only), UTC generation timestamp,
+identity evidence and an SHA-256 of the ordered population identity evidence.
+Randomized additionally records its non-negative integer seed. The source-file
+hash remains separate: the identity fingerprint does not authenticate the source
+or establish completeness. The same seed and ordered population/identity evidence
+reproduce selections with the recorded generator implementation. New seeds use
+local `secrets.randbits(128)`; explicit regeneration ensures a seed different from
+the previous draw. New draws can select the same members, especially when all
+possible unique suppliers already fit in the sample.
+
+The `Manuellt urval` tab offers `Var 20:e (stegvis)` (default) and
+`Randomized (slumpmässigt)`, with population, usable-identity, target and actual
+counts. `Generera nytt slumpmässigt urval` explicitly replaces the random plan.
+`UploadResult.sampling_plans` is local to one completed analysis/session;
+`select_sample_method` reuses a saved plan when switching methods and replaces
+the active `PipelineResult` sampling fields, sampling summary and deferred export
+snapshot together. It does not rerun analysis. Ordinary reruns, charts, navigation
+and table filters cannot regenerate a sample. Refiltering creates a new analysis
+and fresh plans/seed while retaining the chosen method; a new upload/analysis
+starts with systematic. Temporary table filters remain presentation-only and
+exports contain the complete active sample shown in the verification summary.
 
 ## Supplier-view population (separate from sampling)
 
@@ -287,6 +323,15 @@ When supplier matching is available, review/cleaned/flagged/sample exports add m
 Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsöversikt`, `Exkluderingsregler`, `Urvalsmetod` and `Urvalspositioner`. Each export row maps to its exact source occurrence via export sheet/row, parsed source position, source Excel row, worksheet, filename and SHA-256. Combined workbooks distinguish included and excluded export sheets. Matching/contract evidence is subset to each report's population; complete-run summary and sampling evidence remain explicitly run-level context. Register metadata records the source name/kind/hash/date.
 
 The priority-2 update additionally exports run-level `Urvalsbeslut`, `Urvalsidentiteter` and `Leverantörsvy`. `Urvalsmetod` includes the supplier-uniqueness method, target size and any shortfall explanation; `Urvalspositioner` contains only actual selections with row-level identity evidence. The supplier-view sheet records classifications without removing source rows or altering matching evidence in exports. Whole-run matching counts remain in RunSummary; supplier-status charts/cards use the explicit view subset and display its excluded count separately.
+
+The 2026-10-12 sampling update adds the active method, UTC generation timestamp,
+seed (randomized only, exported as literal text to preserve all digits), generator
+and Python version, population identity fingerprint and usable-identity count to
+`Urvalsmetod`. Population/target/actual counts, limitations, per-verification
+decisions and source-row linkage follow the active plan in every workbook.
+Randomized has no interval; systematic exports retain the configured interval.
+Method changes or explicit regeneration create a new deferred export snapshot;
+previous download bytes cannot leak into the active sample's reports.
 
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 
