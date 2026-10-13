@@ -53,12 +53,14 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     assert not app.exception
     table = app.tabs[0].dataframe[0]
     assert table.value.Vernr.tolist() == ids
+    assert list(table.proto.column_order)[:5] == [
+        'Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret',
+        'Matchningsresultat', 'Matchningsscore', 'Varför detta resultat?']
     if key == 'AMBIGUOUS_MATCH':
-        assert table.value['Matchad avtalsleverantör'].tolist() == ['Nordmöbler AB (kandidat)']
-        assert table.value['Orsak'].tolist() == review.result.supplier_analysis.rows.loc[
-            lambda rows: rows['supplier_match_status'].eq('AMBIGUOUS_MATCH'), 'supplier_match_reason'].tolist()
+        assert table.value['Leverantör i avtalsregistret'].tolist() == ['Nordmöbler AB (kandidat)']
+        assert 'Flera möjliga leverantörer hittades.' in table.value['Varför detta resultat?'].iloc[0]
     elif key in ('NO_MATCH', 'SUPPLIER_NOT_IDENTIFIED'):
-        assert table.value['Matchad avtalsleverantör'].tolist() == ['Ingen kandidat identifierad']
+        assert table.value['Leverantör i avtalsregistret'].tolist() == ['Ingen kandidat identifierad']
     assert app.button(key='supplier_' + key).label.startswith(f'**{len(ids)}**')
     assert any('Aktivt vyfilter:' in i.value for i in app.info)
     states = app._tree.get_widget_states()
@@ -74,9 +76,9 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     assert expected_text in [t.value for t in app.text]
     assert any('Registerdatumvarning' in str(b.proto) for b in app.get('markdown'))
     if key == 'AMBIGUOUS_MATCH':
-        candidates = next(e for e in app.expander if e.label == 'Leverantörskandidater och matchningsorsaker')
-        assert candidates.dataframe[0].value.supplier_name.tolist() == ['Nordmöbler AB', 'Nordmöbler Göteborg AB']
-        assert candidates.proto.expanded
+        candidates = next(e for e in app.tabs[0].expander if e.label == 'Visa tekniska matchningsdetaljer')
+        assert candidates.dataframe[1].value.supplier_name.tolist() == ['Nordmöbler AB', 'Nordmöbler Göteborg AB']
+        assert not candidates.proto.expanded
         assert any('Manuell granskning krävs' in w.value for w in app.warning)
     if key == 'NO_MATCH':
         assert 'Sökt leverantörsnamn: Obekant Testbolag AB' in [t.value for t in app.text]

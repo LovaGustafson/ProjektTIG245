@@ -4,9 +4,10 @@ import streamlit as st
 
 from src.ui_support import display_dataframe
 from src.presentation import (
-    customer_facing_value, REGISTRY_ORGANIZATION_LABEL, REGISTRY_ORGANIZATION_COLUMNS,
+    customer_facing_value, REGISTRY_ORGANIZATION_COLUMNS,
     SUPPLIER_MATCH_EXPLANATION,
 )
+from src.ui_supplier_matches import MATCH_LABELS, match_explanation, show_supplier_candidates
 from src.ui_navigation import select_drilldown
 from src.ui_overview_details import source_rows
 from src.supplier_matching.view_scope import visible_supplier_analysis
@@ -96,21 +97,25 @@ def supplier_review_table(kept, analysis):
     if analysis is None or not analysis.registry.available:
         return display
     evidence = analysis.rows.set_index('source_row_position').reindex(kept.index)
-    for field, label in [('supplier_match_status', 'Namnmatchning'),
-                         ('supplier_text_raw', 'Extraherad leverantör'),
-                         ('matched_supplier_name', 'Matchad avtalsleverantör'),
-                         ('supplier_match_reason', 'Orsak'),
+    for field, label in [('supplier_text_raw', 'Leverantör i internkontrollsfilen'),
+                         ('matched_supplier_name', 'Leverantör i avtalsregistret'),
+                         ('supplier_match_status', 'Matchningsresultat'),
+                         ('supplier_match_score', 'Matchningsscore'),
+                         ('supplier_match_reason', 'Varför detta resultat?'),
                          ('contract_count', 'Antal möjliga avtal'),
                          ('registry_date_warning', 'Äldre register än transaktion')]:
         while label in display.columns:
             label = '_' + label
         values = evidence[field]
         if field == 'supplier_match_status':
-            values = values.map(STATUS_LABELS)
+            values = values.map(MATCH_LABELS)
+        elif field == 'supplier_match_reason':
+            values = evidence.apply(match_explanation, axis=1) if not evidence.empty else values
         elif field == 'registry_date_warning':
             values = values.map({True: '🟣 Registerdatumvarning', False: '—'})
         elif field == 'supplier_text_raw':
-            values = values.map(lambda value: customer_facing_value(field, value))
+            values = values.map(lambda value: customer_facing_value(field, value)
+                                if pd.notna(value) and str(value).strip() else 'Inget extraherat leverantörsnamn')
         elif field == 'matched_supplier_name':
             # Preserve the engine's ranking; displaying a candidate does not select an identity.
             candidates = analysis.candidates.groupby('source_row_position', sort=False).head(1)
@@ -134,7 +139,6 @@ def show_supplier_detail(analysis, source_position):
     colors = {'STRONG_MATCH': 'green', 'AMBIGUOUS_MATCH': 'yellow',
               'NO_MATCH': 'orange', 'SUPPLIER_NOT_IDENTIFIED': 'gray'}
     st.badge(STATUS_LABELS[row['supplier_match_status']], color=colors[row['supplier_match_status']])
-    st.text(row['supplier_match_reason'])
     st.caption(SUPPLIER_MATCH_EXPLANATION)
     if row['supplier_match_status'] == 'STRONG_MATCH':
         st.caption('En stark namnmatchning har identifierats i avtalsregistret. '
@@ -150,23 +154,8 @@ def show_supplier_detail(analysis, source_position):
         st.warning(row['registry_date_message'])
     else:
         st.caption('Ingen registerdatumvarning: transaktionen är inte senare än registerutdraget.')
-    details = [('Leverantör från Huvudtext', supplier_text),
-               ('Normaliserad jämförelsetext', row['supplier_normalized']),
-               ('Namnmatchad registerkandidat', row['matched_supplier_name']),
-               (REGISTRY_ORGANIZATION_LABEL, row['matched_organization_number']),
-               ('Matchningsmetod', row['supplier_match_method']),
-               ('Matchningsscore', row['supplier_match_score']),
-               ('Antal kandidater', row['candidate_count']), ('Antal avtal', row['contract_count'])]
-    st.dataframe(display_dataframe(pd.DataFrame(details, columns=['Uppgift', 'Värde'])),
-                 hide_index=True, width='stretch')
-    st.caption('Score beskriver namnlikhet/prefixtäckning på skalan 0–1; det är ingen sannolikhet. '
-               'Exakt träff har score 1. Metod och osäkerhetsorsaker styr bedömningen.')
     candidates = analysis.candidates[analysis.candidates['source_row_position'] == source_position]
-    if not candidates.empty:
-        with st.expander('Leverantörskandidater och matchningsorsaker',
-                         expanded=row['supplier_match_status'] == 'AMBIGUOUS_MATCH'):
-            st.dataframe(display_dataframe(candidates.drop(columns='source_row_position')),
-                         hide_index=True, width='stretch', column_config=REGISTRY_ORGANIZATION_COLUMNS)
+    show_supplier_candidates(matches, candidates)
     contracts = analysis.contracts[analysis.contracts['source_row_position'] == source_position]
     if not contracts.empty:
         with st.expander('Möjliga avtal – inget avtal har valts automatiskt'):

@@ -8,22 +8,17 @@ from src.presentation import REGISTRY_ORGANIZATION_COLUMNS, SUPPLIER_MATCH_EXPLA
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_supplier_panel import show_supplier_scope
+from src.ui_supplier_matches import MATCH_LABELS as SUPPLIER_LABELS, show_supplier_candidates
 from src.ui_support import display_dataframe
 from src.ui_chart_selection import (
     selected_category, chart_widget_key, prepare_chart_selections, reset_chart_selections,
 )
 from src.ui_overview_details import (
-    source_rows, reason_counts, supplier_details, supplier_candidate_comparisons,
+    source_rows, reason_counts, supplier_details,
     contract_details, exclusion_details, verification_details,
 )
 
 
-SUPPLIER_LABELS = {
-    'STRONG_MATCH': 'Stark namnmatchning',
-    'AMBIGUOUS_MATCH': 'Osäker namnmatchning',
-    'NO_MATCH': 'Ingen träff i registret',
-    'SUPPLIER_NOT_IDENTIFIED': 'Leverantör ej identifierad',
-}
 CONTRACT_LABELS = {
     'PASS': 'Inom avtalsperiod', 'FLAGGED': 'Utanför avtalsperiod',
     'ERROR': 'Tekniskt fel', 'NOT_CHECKED': 'Ej verifierbar',
@@ -104,45 +99,14 @@ def show_source_rows(rows):
     show_evidence(rows, 'Underliggande källrader')
 
 
-def show_supplier_candidates(matches, candidates):
-    st.markdown('**Befintliga leverantörskandidater och matchningsorsaker**')
-    if candidates.empty:
-        st.caption('Inga poster i denna kategori.')
-        return
-    display = supplier_candidate_comparisons(matches, candidates)
-    display['supplier_text_raw'] = display['supplier_text_raw'].map(
-        lambda name: name if pd.notna(name) and str(name).strip() else 'Inget extraherat leverantörsnamn')
-    display['supplier_match_status'] = display['supplier_match_status'].map(
-        lambda status: SUPPLIER_LABELS.get(status, status) if pd.notna(status) else 'Matchningsstatus saknas i underlaget')
-    st.caption('Matchningsstatus gäller källraden. Metod, orsak och score gäller respektive kandidat. '
-               'Score är namnlikhet, inte sannolikhet. Alla kandidater i den aktuella vyn visas.')
-    st.dataframe(display_dataframe(display), hide_index=True, width='stretch',
-                 column_order=['supplier_text_raw', 'supplier_name', 'supplier_match_status',
-                               'method', 'reason', 'score', 'organization_number', 'source_row_position'],
-                 column_config={
-                     'supplier_text_raw': st.column_config.TextColumn('Leverantör i internkontrollsfilen', width='large'),
-                     'supplier_name': st.column_config.TextColumn('Leverantör i avtalsregistret', width='large'),
-                     'supplier_match_status': 'Matchningsstatus',
-                     'method': 'Matchningsmetod', 'reason': 'Matchningsorsak',
-                     'score': st.column_config.NumberColumn('Matchningsscore', format='%.6f',
-                                                          help='Befintlig namnlikhetspoäng, inte en sannolikhet.'),
-                     **REGISTRY_ORGANIZATION_COLUMNS,
-                     'source_row_position': st.column_config.NumberColumn('Källposition', format='%d',
-                                                                         help='Befintlig källposition, räknad från 0.'),
-                 })
-
-
 def show_supplier_drilldowns(result, counts, selected=None):
     for row in counts.itertuples(index=False):
         with st.expander(f'{row.Kategori} · {row.Antal} rader', expanded=row.Status == selected):
             st.write(SUPPLIER_EXPLANATIONS[row.Status])
             matches, candidates, contracts, rows = supplier_details(result, row.Status)
-            show_evidence(reason_counts(matches, ['supplier_match_reason']), 'Registrerade orsaker · antal rader')
-            show_evidence(matches, 'Matchningsresultat per källrad', registry_evidence=True)
-            show_source_rows(rows)
-            st.caption('Kandidater och avtal hör till samma källposition som matchningsresultatet. '
-                       'Flera kandidater eller avtal kan finnas per rad. Score är namnlikhet, inte sannolikhet.')
             show_supplier_candidates(matches, candidates)
+            with st.expander('Underliggande källrader', expanded=False):
+                show_source_rows(rows)
             with st.expander('Befintlig avtalsinformation', expanded=False):
                 show_evidence(contracts, 'Möjliga registeravtal · inget avtal har valts för köpet', registry_evidence=True)
 

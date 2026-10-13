@@ -14,6 +14,7 @@ from src.ui_support import select_sample_method
 from src.sampling.manual_sample import SAMPLING_METHODS
 from src.ui_filter_panel import filter_panel, clear_ui_filters
 from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
+from src.ui_supplier_matches import SCORE_EXPLANATION
 from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
 from src.ui_supplier_panel import show_supplier_scope
 from src.supplier_matching.view_scope import visible_supplier_analysis
@@ -345,10 +346,22 @@ def show_review_table(result, kept, *, key):
         label = list(analysis.summary())[SUPPLIER_VIEWS.index(selected)]
         active_drilldown(label, 'supplier')
         kept = kept.loc[kept.index.isin(supplier_positions(analysis, selected))]
+    source_column_count = len(kept.columns)
     kept = supplier_review_table(kept, result.supplier_analysis)
+    match_columns = kept.columns[source_column_count:source_column_count + 5].tolist()
+    # Presentation order only: filters and selection retain the original data positions.
+    column_order = match_columns + [name for name in kept.columns if name not in match_columns]
+    score_column = match_columns[3] if len(match_columns) == 5 else None
     filtered = filter_panel(kept, view=key, selection_key=key)
     selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
-                             key=key, on_select='rerun', selection_mode='single-row')
+                             key=key, on_select='rerun', selection_mode='single-row',
+                             column_order=column_order,
+                             column_config={score_column: st.column_config.NumberColumn(
+                                 'Matchningsscore', format='%.6f', help=SCORE_EXPLANATION)} if score_column else {})
+    if result.supplier_analysis and result.supplier_analysis.registry.available:
+        st.caption(SCORE_EXPLANATION)
+        st.caption('Vid osäker matchning visas den första registerkandidaten i backendens ordning, '
+                   'utan att någon leverantör har valts. Alla kandidater och deras score finns i raddetaljerna.')
     st.caption('Markera en rad i tabellen för att visa radens uppgifter och valideringsvarningar.')
     if selection.selection.rows and selection.selection.rows[0] < len(filtered.positions):
         source_position = kept.index[filtered.positions[selection.selection.rows[0]]]
