@@ -55,7 +55,7 @@ def check_contract_period(verification_date, contract, *, identity_confirmed,
         return result(CheckStatus.NOT_CHECKED, UNVERIFIABLE, reason)
 
     if not identity_confirmed:
-        return unavailable('Ingen säker leverantörsidentitet; kandidatens avtalsperiod har inte bedömts.')
+        return unavailable('Ingen stark namnmatchning; kandidatens avtalsperiod har inte bedömts.')
     if transaction is None or start is None:
         return unavailable('Verifikationsdatum eller avtalets startdatum saknas eller kan inte läsas.')
     if policy.end_date_field is not None:

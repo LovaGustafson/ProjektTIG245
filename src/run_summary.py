@@ -8,20 +8,20 @@ SAMPLE_ORDER = 'Första förekomst i källdata efter basfiltrering och grupperin
 SAMPLE_POPULATION = ('Alla kvarvarande verifikationer med användbart verifikations-ID, '
                      'efter analys och oberoende av flaggning. Hela kvarvarande grupper väljs.')
 SAMPLE_METHOD = ('Ordinarie intervallpositioner prövas i populationens ordning. Vid redan vald leverantör '
-                 'eller saknad/flera leverantörsidentiteter prövas nästa verifikation framåt. '
+                 'eller saknad/flera leverantörsnycklar prövas nästa verifikation framåt. '
                  'Nästa intervallposition flyttas inte, men redan passerade kandidater prövas inte igen. '
                  'Ingen återgång till tidigare positioner eller utfyllnad med dubletter görs.')
 RANDOM_SAMPLE_METHOD = ('Hela urvalspopulationen får en seedstyrd slumpordning med lika slumpmässig '
                         'prioritet för varje verifikation. Kandidater prövas utan återläggning tills '
                         '20 verifikationer med unika leverantörer valts eller populationen är uttömd. '
-                        'Saknad/flera leverantörsidentiteter och redan valda leverantörer hoppas över. '
+                        'Saknad/flera leverantörsnycklar och redan valda leverantörer hoppas över. '
                         'Leverantörsunikheten begränsar den slutliga sannolikheten att ingå. '
                         'Flaggning, risk, leverantörsrankning och det stegvisa stickprovet påverkar inte slumpningen. '
                         'Resultatet visas i populationens ordning; slumpordningen sparas i urvalsbesluten.')
-SAMPLE_IDENTITY = ('Stark träff använder organisationsnummer; annars används exakt normaliserat '
+SAMPLE_IDENTITY = ('Stark namnmatchning använder organisationsnummer från avtalsregistret; annars används exakt normaliserat '
                    'leverantörsnamn extraherat ur Huvudtext. Alla rader i verifikationen måste ha samma nyckel. '
                    'Varken samma nyckel eller samma normaliserade namn får väljas igen. '
-                   'Namnnyckeln bekräftar inte juridisk identitet. Motp används inte. '
+                   'Juridisk identitet har inte verifierats mot internkontrollsfilen. Motp används inte. '
                    'Intern/extern-klassificering för leverantörsvyn påverkar inte stickprovet.')
 
 
@@ -63,8 +63,8 @@ class RunSummary:
             'Flaggade verifikationer': self.flagged_verifications,
             'Rader i flaggade verifikationer': self.flagged_rows,
             'Leverantörsmatchade rader': self.supplier_analyzed_rows,
-            'Rader med säker leverantörsträff': self.strong_supplier_rows,
-            'Rader utan säker leverantörsträff': self.uncertain_supplier_rows,
+            'Rader med stark namnmatchning': self.strong_supplier_rows,
+            'Rader utan stark namnmatchning': self.uncertain_supplier_rows,
             'Rader där leverantörsmatchning inte kunde genomföras': self.supplier_unavailable_rows,
         }
         for status in ('PASS', 'FLAGGED', 'ERROR', 'NOT_CHECKED'):

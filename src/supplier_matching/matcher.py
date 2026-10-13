@@ -84,10 +84,10 @@ class SupplierMatcher:
         best = candidates[0]
         if len(candidates) == 1 and best.strong_eligible:
             return SupplierMatch(supplier_text, query, Status.STRONG_MATCH, best.method, best.score,
-                'Stark leverantörsträff i Koncerninköpsregistret. ' + best.reason, candidates)
-        reason = 'Flera eller osäkra leverantörsträffar – kontrollera manuellt. '
+                'Stark namnmatchning i avtalsregistret. ' + best.reason, candidates)
+        reason = 'Flera eller osäkra namnmatchningar – kontrollera manuellt. '
         if len(candidates) > 1:
-            reason += f'{len(candidates)} möjliga leverantörsidentiteter; ingen har valts.'
+            reason += f'{len(candidates)} möjliga registerkandidater; ingen har valts.'
         else:
             reason += best.reason
         return SupplierMatch(supplier_text, query, Status.AMBIGUOUS_MATCH,

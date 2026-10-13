@@ -4,6 +4,27 @@ from src.mapping.column_mapper import COLUMN_MAPPING
 from src.supplier_matching.extraction import FINAL_BOOKING, normalize_header_text
 
 SOURCE_NAMES = {internal: source for source, internal in COLUMN_MAPPING.items()}
+REGISTRY_ORGANIZATION_LABEL = 'Organisationsnummer (från avtalsregistret)'
+SUPPLIER_MATCH_EXPLANATION = (
+    'Matchningen bygger på leverantörsnamn från Huvudtext. Organisationsnummer hämtas från '
+    'avtalsregistret; juridisk identitet har inte verifierats mot internkontrollsfilen.'
+)
+REGISTRY_ORGANIZATION_COLUMNS = {
+    'matched_organization_number': REGISTRY_ORGANIZATION_LABEL,
+    'organization_number': REGISTRY_ORGANIZATION_LABEL,
+}
+
+
+def supplier_evidence_rows(data):
+    """Clarify generated evidence text without changing the sampling fingerprint."""
+    display = pd.DataFrame(data).copy(deep=True)
+    if 'identity_reason' in display:
+        display['identity_reason'] = display['identity_reason'].replace({
+            'Organisationsnummer från befintlig stark leverantörsträff.':
+                'Organisationsnummer från avtalsregistret efter stark namnmatchning; '
+                'juridisk identitet har inte verifierats mot internkontrollsfilen.',
+        })
+    return display
 
 
 def _is_header_or_supplier_text(field):

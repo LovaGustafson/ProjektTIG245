@@ -3,15 +3,18 @@ import pandas as pd
 import streamlit as st
 
 from src.ui_support import display_dataframe
-from src.presentation import customer_facing_value
+from src.presentation import (
+    customer_facing_value, REGISTRY_ORGANIZATION_LABEL, REGISTRY_ORGANIZATION_COLUMNS,
+    SUPPLIER_MATCH_EXPLANATION,
+)
 from src.ui_navigation import select_drilldown
 from src.ui_overview_details import source_rows
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.supplier_matching.contract_period import ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE
 
 STATUS_LABELS = {
-    'STRONG_MATCH': '🟢 Stark leverantörsträff',
-    'AMBIGUOUS_MATCH': '🟡 Osäker träff – manuell granskning',
+    'STRONG_MATCH': '🟢 Stark namnmatchning',
+    'AMBIGUOUS_MATCH': '🟡 Osäker namnmatchning – manuell granskning',
     'NO_MATCH': '🟠 Ingen match i aktuellt Koncerninköpsregister',
     'SUPPLIER_NOT_IDENTIFIED': '⚪ Leverantör kunde inte identifieras',
 }
@@ -68,7 +71,8 @@ def show_supplier_summary(analysis, classification=None):
             st.error(message)
         return
     st.caption(f'Registerutdrag: {analysis.registry.snapshot_date or "datum saknas"}. '
-               'En leverantörsträff visar möjliga avtal. Vilket avtal köpet avser är inte bedömt.')
+               'En namnmatchning visar möjliga avtal. Vilket avtal köpet avser är inte bedömt.')
+    st.caption(SUPPLIER_MATCH_EXPLANATION)
     with st.container(key='supplier_kpis'):
         for column, key, (label, count) in zip(st.columns(6), SUPPLIER_VIEWS, analysis.summary().items()):
             column.button(f'**{count}**  \n{label}', key='supplier_' + key, width='stretch',
@@ -92,7 +96,7 @@ def supplier_review_table(kept, analysis):
     if analysis is None or not analysis.registry.available:
         return display
     evidence = analysis.rows.set_index('source_row_position').reindex(kept.index)
-    for field, label in [('supplier_match_status', 'Leverantörsträff'),
+    for field, label in [('supplier_match_status', 'Namnmatchning'),
                          ('supplier_text_raw', 'Extraherad leverantör'),
                          ('matched_supplier_name', 'Matchad avtalsleverantör'),
                          ('supplier_match_reason', 'Orsak'),
@@ -131,8 +135,9 @@ def show_supplier_detail(analysis, source_position):
               'NO_MATCH': 'orange', 'SUPPLIER_NOT_IDENTIFIED': 'gray'}
     st.badge(STATUS_LABELS[row['supplier_match_status']], color=colors[row['supplier_match_status']])
     st.text(row['supplier_match_reason'])
+    st.caption(SUPPLIER_MATCH_EXPLANATION)
     if row['supplier_match_status'] == 'STRONG_MATCH':
-        st.caption('Leverantören är starkt identifierad i aktuellt register. '
+        st.caption('En stark namnmatchning har identifierats i avtalsregistret. '
                    'Detta bedömer inte fakturans riktighet eller om köpet omfattas av avtal.')
     elif row['supplier_match_status'] == 'NO_MATCH':
         st.text('Sökt leverantörsnamn: ' + str(supplier_text))
@@ -147,8 +152,8 @@ def show_supplier_detail(analysis, source_position):
         st.caption('Ingen registerdatumvarning: transaktionen är inte senare än registerutdraget.')
     details = [('Leverantör från Huvudtext', supplier_text),
                ('Normaliserad jämförelsetext', row['supplier_normalized']),
-               ('Matchad leverantör', row['matched_supplier_name']),
-               ('Organisationsnummer', row['matched_organization_number']),
+               ('Namnmatchad registerkandidat', row['matched_supplier_name']),
+               (REGISTRY_ORGANIZATION_LABEL, row['matched_organization_number']),
                ('Matchningsmetod', row['supplier_match_method']),
                ('Matchningsscore', row['supplier_match_score']),
                ('Antal kandidater', row['candidate_count']), ('Antal avtal', row['contract_count'])]
@@ -161,15 +166,16 @@ def show_supplier_detail(analysis, source_position):
         with st.expander('Leverantörskandidater och matchningsorsaker',
                          expanded=row['supplier_match_status'] == 'AMBIGUOUS_MATCH'):
             st.dataframe(display_dataframe(candidates.drop(columns='source_row_position')),
-                         hide_index=True, width='stretch')
+                         hide_index=True, width='stretch', column_config=REGISTRY_ORGANIZATION_COLUMNS)
     contracts = analysis.contracts[analysis.contracts['source_row_position'] == source_position]
     if not contracts.empty:
         with st.expander('Möjliga avtal – inget avtal har valts automatiskt'):
             st.caption('Alla registerposter visas med originaldatum, använd period, verifikationsdatum '
-                       'och kontrollresultat. Osäker identitet eller oklara datum ger NOT_CHECKED. '
+                       'och kontrollresultat. Osäker namnmatchning eller oklara datum ger NOT_CHECKED. '
                        'Vilket avtal köpet omfattas av har inte avgjorts.')
             st.dataframe(display_dataframe(contracts.drop(columns='source_row_position')),
                          hide_index=True, width='stretch', column_config={
+                             **REGISTRY_ORGANIZATION_COLUMNS,
                              'contract_id': 'Avtals-ID', 'contract_name': 'Avtalsnamn',
                              'start_date': 'Startdatum (original)', 'end_date': 'Slutdatum (original)',
                              'final_end_date': 'Sista slutdatum (original)',

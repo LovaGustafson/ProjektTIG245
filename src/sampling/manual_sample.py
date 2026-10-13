@@ -73,12 +73,12 @@ class SamplingResult:
                     f'Hela populationen om {len(self.decisions)} verifikationer har prövats i slumpordning. '
                     'Inga fler giltiga, unika leverantörer kunde väljas. '
                     f'{counts.get("DUPLICATE_SUPPLIER", 0)} kandidater har redan vald leverantör och '
-                    f'{counts.get("UNUSABLE_IDENTITY", 0)} har saknad eller flera leverantörsidentiteter. '
+                    f'{counts.get("UNUSABLE_IDENTITY", 0)} har saknad eller flera leverantörsnycklar. '
                     'Återstående platser fylls inte med dubletter. Se urvalsbesluten för orsaker och källrader.')
         return (f'Stickprovet blev mindre: {len(self.sample)} av önskade {self.target_size} verifikationer. '
                 'Inga fler giltiga, unika leverantörer kunde väljas framåt från urvalspositionerna. '
                 f'Överhoppade kandidater: {counts.get("DUPLICATE_SUPPLIER", 0)} med redan vald leverantör, '
-                f'{counts.get("UNUSABLE_IDENTITY", 0)} med saknad eller flera leverantörsidentiteter. '
+                f'{counts.get("UNUSABLE_IDENTITY", 0)} med saknad eller flera leverantörsnycklar. '
                 'Återstående platser fylls inte med dubletter. Se urvalsbesluten för orsaker och källrader.')
 
 
@@ -212,8 +212,8 @@ def _prepare_candidates(analyzed_verifications, supplier_analysis):
         keys = set(evidence.supplier_key.dropna())
         missing = evidence.empty or evidence.supplier_key.isna().any()
         usable = not missing and len(keys) == 1
-        reason = ('Leverantörsidentitet saknas på minst en rad.' if missing else
-                  'Verifikationen har flera leverantörsnycklar; gemensam identitet är inte säkerställd.' if len(keys) != 1 else
+        reason = ('Leverantörsnyckel saknas på minst en rad.' if missing else
+                  'Verifikationen har flera leverantörsnycklar; en gemensam nyckel kan inte fastställas.' if len(keys) != 1 else
                   'Alla rader har samma leverantörsnyckel.')
         names_by_position[position] = set(evidence.supplier_normalized) - {''}
         decisions.append(dict(population_position=position, verification_id=verification.verification_id,

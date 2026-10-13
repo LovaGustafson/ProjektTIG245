@@ -3,6 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 import errno
+from io import BytesIO
 
 import pandas as pd
 import pytest
@@ -12,7 +13,7 @@ from openpyxl.utils.exceptions import IllegalCharacterError
 from src.ingestion.excel_reader import read_excel
 from src.models.result import CheckResult, CheckStatus
 from src.models.verification import Verification
-from src.output.report_generator import CHECK_COLUMNS, generate_reports
+from src.output.report_generator import CHECK_COLUMNS, generate_reports, _workbook
 
 
 @pytest.fixture
@@ -72,6 +73,22 @@ def test_source_file_and_in_memory_data_unchanged(tmp_path, rows):
     pd.testing.assert_frame_equal(rows, before)
     assert source.read_bytes() == original_bytes
     assert source.stat().st_mtime_ns == original_mtime
+
+
+def test_supplier_wording_does_not_relabel_or_translate_source_columns():
+    source = pd.DataFrame({'organization_number': ['Källvärde'],
+        'identity_reason': ['Organisationsnummer från befintlig stark leverantörsträff.']})
+    before = source.copy(deep=True)
+    content = _workbook({'Granskning': source, 'Leverantörskandidater': source})
+    with pd.ExcelFile(BytesIO(content)) as book:
+        pd.testing.assert_frame_equal(pd.read_excel(book, 'Granskning'), source)
+        assert pd.read_excel(book, 'Leverantörskandidater').identity_reason.iloc[0].startswith(
+            'Organisationsnummer från avtalsregistret efter stark namnmatchning;')
+    book = load_workbook(BytesIO(content))
+    assert book['Granskning']['A1'].comment is None
+    assert book['Leverantörskandidater']['A1'].comment.text.startswith('Organisationsnummer (från avtalsregistret).')
+    book.close()
+    pd.testing.assert_frame_equal(source, before)
 
 
 @pytest.mark.parametrize("filename", ["cleaned_data.xlsx", "flagged_invoices.xlsx", "manual_sample.xlsx"])
