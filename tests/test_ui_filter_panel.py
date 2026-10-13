@@ -65,18 +65,18 @@ def test_filters_are_per_view_clear_and_leave_engine_and_exports_unchanged():
         choose(app, 'review_rows', 'Konto', 'Vertyp')
         app.multiselect(key=key(app, 'review_rows', 'Konto', 'categories')).set_value(['5410']).run()
         app.multiselect(key=key(app, 'review_rows', 'Vertyp', 'categories')).set_value(['NEW']).run()
-        assert app.tabs[0].dataframe[0].value['Vernr'].tolist() == ['001', '006']
-        assert len(app.tabs[1].dataframe[0].value) == 3
+        assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Vernr'].tolist() == ['001', '006']
+        assert len(next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value) == 3
         assert any(c.value == 'Visar 2 av 3 rader' for c in app.caption)
         assert any('Konto: 5410' in c.value and 'Vertyp: NEW' in c.value for c in app.caption)
         choose(app, 'excluded', 'Konto')
         app.multiselect(key=key(app, 'excluded', 'Konto', 'categories')).set_value(['7698']).run()
-        assert app.tabs[1].dataframe[0].value['Vernr'].tolist() == ['002']
+        assert next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value['Vernr'].tolist() == ['002']
         app.button(key='vf:review_rows:clear').click().run()
         assert not app.exception
         assert app.multiselect(key='vf:review_rows:columns').value == []
-        assert len(app.tabs[0].dataframe[0].value) == 3
-        assert app.tabs[1].dataframe[0].value['Vernr'].tolist() == ['002']
+        assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value) == 3
+        assert next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value['Vernr'].tolist() == ['002']
     assert [app.button(key=f'kpi_{name}').label for name in ('total', 'review', 'account', 'verification_type', 'excluded')] == kpis
     pd.testing.assert_frame_equal(review.result.original_data, original)
     pd.testing.assert_frame_equal(review.result.standardized_data, standardized)
@@ -99,14 +99,14 @@ def test_panel_controls_filter_mixed_values(label, widget, suffix, value, expect
     choose(app, 'review_rows', label)
     getattr(app, widget)(key=key(app, 'review_rows', label, suffix)).set_value(value).run()
     assert not app.exception
-    assert app.tabs[0].dataframe[0].value['Vernr'].tolist() == expected
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Vernr'].tolist() == expected
 
 
 def test_filtered_selection_maps_to_original_row_and_clears_on_change():
     app, _ = start()
     choose(app, 'review_rows', 'Radtext')
     app.text_input(key=key(app, 'review_rows', 'Radtext', 'text')).set_value('Sista').run()
-    table = app.tabs[0].dataframe[0]
+    table = next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0]
     states = app._tree.get_widget_states()
     state = states.widgets.add()
     state.id = table.proto.id
@@ -118,7 +118,7 @@ def test_filtered_selection_maps_to_original_row_and_clears_on_change():
     assert any('Utfall' in warning.value for warning in app.warning)
     app.text_input(key=key(app, 'review_rows', 'Radtext', 'text')).set_value('Medicin').run()
     assert not app.exception
-    assert app.tabs[0].dataframe[0].value['Vernr'].tolist() == ['001']
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Vernr'].tolist() == ['001']
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)
 
 
@@ -133,7 +133,7 @@ def test_kpi_click_restores_exact_card_rows_and_reset_on_rule_change_and_new_upl
     assert not app.exception
     # A fresh card click shows exactly its count, clearing only that view.
     assert next(table for table in app.dataframe if table.key == 'kpi_review_rows').value['Vernr'].tolist() == ['001', '005', '006']
-    assert len(app.tabs[0].dataframe[0].value) == 3
+    assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value) == 3
     app.multiselect(key='excluded_types').unselect('KR01').run()
     assert not app.exception
     assert app.multiselect(key='vf:kpi_review_rows:columns').value == []
@@ -164,6 +164,6 @@ def test_manual_sample_has_original_fields_and_independent_filters():
     manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')
     assert next(t.value for t in manual.dataframe if 'Vernr' in t.value)['Vernr'].tolist() == ['040']
     assert manual.dataframe[0].value['verification_id'].tolist() == ['020', '040']
-    assert len(app.tabs[0].dataframe[0].value) == 40
+    assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value) == 40
     assert [v.verification_id for v in review.result.manual_sample] == ['020', '040']
     assert len(pd.read_excel(BytesIO(review.downloads['manual_sample.xlsx']))) == 2

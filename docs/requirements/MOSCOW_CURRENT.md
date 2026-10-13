@@ -162,6 +162,23 @@ Open questions: structural-row boundaries and final invalid-record handling rema
 
 ## M5 — Sampling criteria documented
 
+The approved 2026-10-13 Del 1 constraint is implemented for both methods:
+confirmed internal suppliers may occupy at most floor(actual selected
+verifications / 20) places, including zero below 20. Targets, order, seed,
+uniqueness and base exclusions remain unchanged. Selection initially uses the
+target-size limit, then removes latest selected internal verifications until
+the actual-size limit holds, without a new draw, revisiting or backfilling.
+Confirmed external and unclassified suppliers remain eligible; unclassified
+must never be labelled external. Internal + unclassified means internal;
+external + unclassified means unclassified; internal + external or conflicting
+source rules means conflict and exclusion from the sample.
+UI/export count selected internal, external and unclassified verifications,
+quota/conflict rejections and final removals, and explain any shortfall.
+The cap covers confirmed internal suppliers only; actual internal share may be
+higher. The latest user decision explicitly leaves `sampling_supplier_rules`
+empty: no example names or organization numbers are activated. Future exact
+identities require confirmation; see Q13. Synthetic rules test the implementation.
+
 Customer requirement:
 
 > Urvalskriterier är dokumenterade.

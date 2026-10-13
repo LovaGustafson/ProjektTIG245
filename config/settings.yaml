@@ -62,6 +62,14 @@ required_fields: null
 # forward (priority 2, 2026-09-30). Target floor(population / interval), no duplicates.
 manual_sample_interval: 20
 
+# Sampling-only confirmed classifications. Empty by explicit Del 1 approval.
+# No example names or organization numbers are activated. Add entries only after
+# identity confirmation: id, match_field (supplier_name / organization_number),
+# value, classification (INTERNAL / EXTERNAL), reason, confirmed (boolean).
+# Exact existing normalization; organization rules require an existing strong match.
+# Unclassified remains eligible, conflicts do not. Internal cap: actual size // 20.
+sampling_supplier_rules: []
+
 # Presentation only: no generic internal/external signal exists. No examples are
 # activated. Each future entry requires explicit confirmation and a reason.
 # Fields: id, match_field (organization_number or supplier_name), value (string),

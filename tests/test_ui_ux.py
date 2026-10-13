@@ -152,7 +152,7 @@ def test_manual_supplier_names_use_source_links_and_keep_multiple_or_missing_nam
     app.session_state['review'] = upload
     app.run()
     assert not app.exception
-    assert app.tabs[4].dataframe[0].value.supplier.tolist() == selected.supplier.tolist()
+    assert next(tab for tab in app.tabs if tab.label == 'Manuellt urval').dataframe[0].value.supplier.tolist() == selected.supplier.tolist()
     detail = expander(app, 'Utvalda ·')
     assert evidence_table(detail, 'supplier').supplier.tolist() == selected.supplier.tolist()
 

@@ -119,7 +119,7 @@ def test_dashboard_full_labels_transparency_and_selected_detail():
     app.button(key='kpi_verification_type').click().run()
     types = kpi_detail(app)
     assert types.dataframe[1].value['Vertyp'].tolist() == ['KR01', 'KR01']
-    table = app.tabs[0].dataframe[0]
+    table = next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0]
     # AppTest has no public dataframe click helper; send the actual widget event.
     states = WidgetStates()
     state = states.widgets.add()

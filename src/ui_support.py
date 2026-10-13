@@ -51,6 +51,7 @@ def select_sample_method(review: UploadResult, method: str, *, regenerate=False)
         previous = plans.get(method)
         plans[method] = plan_random_sample(review.result.verifications,
             supplier_analysis=review.result.supplier_analysis,
+            classification_rules=current.classification_rules,
             seed=new_sample_seed(previous.seed if previous is not None else None))
     plan = plans[method]
     summary = replace(review.result.summary, sample_interval=plan.interval,

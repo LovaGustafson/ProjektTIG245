@@ -112,7 +112,8 @@ def run_pipeline(input_path, *, output_dir, settings_path=DEFAULT_SETTINGS_PATH,
                              rule_options=rule_options, rules=rules)
                for v, evidence in zip(verifications, images)]
     interval = load_sample_interval(settings_path)
-    sampling_result = plan_manual_sample(verifications, interval=interval, supplier_analysis=supplier_analysis)
+    sampling_result = plan_manual_sample(verifications, interval=interval, supplier_analysis=supplier_analysis,
+                                         settings_path=settings_path)
     sample = sampling_result.sample
     run_summary = summarize_run(original, filtering, ungrouped, verifications, results,
                                 sample, supplier_analysis, interval)

@@ -267,10 +267,11 @@ and `shuffle`; it never draws from the systematic sample. Candidates are examine
 without replacement in that order using the shared, unchanged identity/uniqueness
 checks, until 20 are selected or the population is exhausted. Random priority is
 uniform across verifications; supplier uniqueness constrains final inclusion
-probabilities. No risk, flag, supplier ranking or view classification weights the
-draw. Fewer than 20 possible unique suppliers yields the maximum available sample
-and an explicit shortfall with population, repeated-supplier and unusable-identity
-counts. Empty populations yield an empty sample with target 20. Selected complete
+probabilities, as do the confirmed sampling classifications/quota below. No risk,
+flag, supplier ranking or view classification weights the draw. Insufficient
+eligible unique suppliers or final quota removals yield a smaller sample and an
+explicit shortfall with recorded rejection reasons. Empty populations yield an
+empty sample with target 20. Selected complete
 groups are copied and returned in population order; `draw_position` in decisions
 preserves the random order. Systematic decisions retain their existing meaning.
 
@@ -278,14 +279,54 @@ Both plans record method, interval (systematic only), UTC generation timestamp,
 identity evidence and an SHA-256 of the ordered population identity evidence.
 Randomized additionally records its non-negative integer seed. The source-file
 hash remains separate: the identity fingerprint does not authenticate the source
-or establish completeness. The same seed and ordered population/identity evidence
+or establish completeness. The same seed, classification rules and ordered population/identity evidence
 reproduce selections with the recorded generator implementation. New seeds use
 local `secrets.randbits(128)`; explicit regeneration ensures a seed different from
 the previous draw. New draws can select the same members, especially when all
 possible unique suppliers already fit in the sample.
 
-The `Manuellt urval` tab offers `Var 20:e (stegvis)` (default) and
-`Randomized (slumpmässigt)`, with population, usable-identity, target and actual
+## Confirmed internal quota (Del 1, 2026-10-13)
+
+Both methods share `src/sampling/classification.py`. The separate
+`sampling_supplier_rules` configuration list is **empty**, as explicitly requested;
+no example identities are activated. Future entries require confirmed exact names
+or organization numbers, with the same explicit rule fields/normalization as view
+rules, but only `INTERNAL`/`EXTERNAL` classifications. Only confirmed rules apply.
+Names use existing extracted/normalized identity evidence; organization rules
+require an existing strong-match organization identity. No substring/fuzzy rule,
+Motp inference or new supplier matching is introduced. View rules never substitute
+for these sampling rules. Base exclusions are unchanged.
+
+Each source occurrence records its matching rule IDs, classification and reasons.
+Within a verification: internal + unclassified is internal; external + unclassified
+is unclassified; internal + external or any conflicting source classification is
+conflict. All-external groups are external; no rule is unclassified, never external.
+Existing missing/multiple identity checks and supplier uniqueness still apply.
+Examined conflicts receive `CLASSIFICATION_CONFLICT` and remain outside the sample.
+
+At most floor(target / 20) internal verifications may be accepted during the
+existing forward/random selection sequence; excess internal candidates receive
+`INTERNAL_QUOTA` and examination continues in the same sequence. After selection,
+remove latest selected internal verifications, in reverse selection order, until
+internal count <= floor(actual remaining size / 20). Recompute the denominator
+after every removal, recording `INTERNAL_QUOTA_REMOVED` and the reason. There is
+no redraw, revisiting, quota-slot reservation or backfill after removal. Duplicate
+decisions remain explained even when the earlier selected supplier is removed.
+Targets, nominal positions, random generator/seed and source ordering are unchanged.
+
+`SamplingResult` retains the rule snapshot, source classifications and their
+fingerprint. Method switching/regeneration uses that snapshot; exports serialize
+the active plan, never draw another sample. UI/export report actual/target counts,
+selected internal/external/unclassified counts, examined quota/conflict rejections
+and final quota removals, with shortfall reasons. Not-examined cases retain their
+classification evidence without being counted as rejection decisions. Both surfaces
+warn that unclassified suppliers can contain internal suppliers and the cap cannot
+guarantee actual internal share. With zero active internal rules this is stated explicitly.
+
+The main navigation has `Analys och granskning` and `Manuellt urval`. The first
+contains the existing review, excluded, controls and export tabs. The manual
+sample is rendered once with its existing session state. Its tab offers `Var 20:e (stegvis)` (default) and
+`Slumpmässig`, with population, usable-identity, target and actual
 counts. `Generera nytt slumpmässigt urval` explicitly replaces the random plan.
 `UploadResult.sampling_plans` is local to one completed analysis/session;
 `select_sample_method` reuses a saved plan when switching methods and replaces
@@ -300,7 +341,7 @@ exports contain the complete active sample shown in the verification summary.
 
 No general internal/external signal is documented in the current input or register schema. `src/supplier_matching/view_scope.py` therefore applies only explicit `supplier_view_rules` entries in configuration. The default list is empty. Each entry supplies a unique `id`, `match_field` (`organization_number` or `supplier_name`), string `value`, `classification` (`INTERNAL`, `NOT_RELEVANT`, `EXTERNAL`), `reason` and boolean `confirmed`. Only confirmed entries apply. Organization rules require an existing strong match; exact name rules use existing Huvudtext extraction and supplier normalization. No substrings, candidate guesses or Motp classification are used.
 
-Each retained source row receives classification evidence, rule IDs, fields, configured values and reasons. No matching rule means `UNCLASSIFIED`, not external; conflicting classifications mean `CONFLICT` and remain visible. INTERNAL/NOT_RELEVANT hide rows only in the supplier-status overview, supplier cards and their drill-downs. Excluded counts, reasons and source rows are inspectable in a collapsed view; the complete review table, all supplier evidence/exports, contract-overview totals, base filtering and sampling remain intact. This classification is independent of the three existing confirmed base exclusions. Whether sampling should become external-only remains Q13.
+Each retained source row receives classification evidence, rule IDs, fields, configured values and reasons. No matching rule means `UNCLASSIFIED`, not external; conflicting classifications mean `CONFLICT` and remain visible. INTERNAL/NOT_RELEVANT hide rows only in the supplier-status overview, supplier cards and their drill-downs. Excluded counts, reasons and source rows are inspectable in a collapsed view; the complete review table, all supplier evidence/exports, contract-overview totals, base filtering and sampling remain intact. This classification is independent of the three existing confirmed base exclusions and the separate sampling quota rules. Sampling permits unclassified suppliers; Q13 retains the unresolved exact classification identities.
 
 # 14. Exports and review UI
 
@@ -332,6 +373,13 @@ decisions and source-row linkage follow the active plan in every workbook.
 Randomized has no interval; systematic exports retain the configured interval.
 Method changes or explicit regeneration create a new deferred export snapshot;
 previous download bytes cannot leak into the active sample's reports.
+
+The Del 1 quota update adds `Urvalsklassificering` (source-level evidence) and
+`Urvalsklassificeringsregler` (the rule snapshot, including an empty table when no
+rules exist). Existing workbook sheets and source values are retained.
+`Urvalsbeslut` adds verification classification/reason; `Urvalsmetod` adds selected
+classification counts, quota/conflict rejections, final removals, the actual-size
+quota, active internal-rule count, limitations and classification fingerprint.
 
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 

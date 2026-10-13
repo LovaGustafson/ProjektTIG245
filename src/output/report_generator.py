@@ -22,6 +22,7 @@ from src.supplier_matching.analysis import enrich_rows
 from src.supplier_matching.extraction import normalize_header_text
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.sampling.manual_sample import SAMPLING_METHODS
+from src.sampling.classification import RULE_COLUMNS
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -113,12 +114,15 @@ def audit_sheets(data, *, source_context=None, run_summary=None, sampling_eviden
             'Antal valda rader': run_summary.sampled_rows,
             'Önskat antal verifikationer': sampling_result.target_size if sampling_result is not None else None,
             'Förklaring till mindre stickprov': sampling_result.shortfall_message if sampling_result is not None else None,
+            **(sampling_result.quota_metadata if sampling_result is not None else {}),
         }])
     if sampling_evidence is not None:
         sheets['Urvalspositioner'] = sampling_evidence
     if sampling_result is not None:
         sheets['Urvalsbeslut'] = sampling_result.decisions
         sheets['Urvalsidentiteter'] = sampling_result.identity_rows
+        sheets['Urvalsklassificering'] = sampling_result.classification_rows
+        sheets['Urvalsklassificeringsregler'] = pd.DataFrame(sampling_result.classification_rules, columns=RULE_COLUMNS)
     if supplier_view is not None:
         sheets['Leverantörsvy'] = supplier_view
     return sheets

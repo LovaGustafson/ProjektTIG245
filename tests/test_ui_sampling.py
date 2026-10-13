@@ -53,7 +53,7 @@ def assert_visible_export(app):
     assert metadata['Genereringstidpunkt (UTC)'] == plan.generated_at
     assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
     if plan.method == 'randomized':
-        assert metadata['Urvalsmetod'] == 'Randomized (slumpmässigt)'
+        assert metadata['Urvalsmetod'] == 'Slumpmässig'
         assert metadata['Seed'] == str(plan.seed)
         assert pd.isna(metadata['Intervall'])
         assert 'hela' in metadata['Metod'].lower()
@@ -71,7 +71,7 @@ def test_method_reruns_view_filters_regeneration_and_exports(monkeypatch):
     monkeypatch.setattr('src.ui_support.new_sample_seed', lambda previous=None: next(seeds))
     app, original = start_app(population(85))
     assert app.radio(key='manual_sample_method').value == 'systematic'
-    assert app.radio(key='manual_sample_method').options == ['Var 20:e (stegvis)', 'Randomized (slumpmässigt)']
+    assert app.radio(key='manual_sample_method').options == ['Var 20:e (stegvis)', 'Slumpmässig']
     assert sample_ids(original) == ['20', '40', '60', '80']
     assert_visible_export(app)
     # Method changes and ordinary interactions must not reread/reanalyze sources.

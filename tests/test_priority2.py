@@ -211,13 +211,13 @@ def test_confirmed_organization_view_rule_preserves_accuracy_and_inspectable_row
     assert scope.dataframe[0].value.reason.tolist() == [rule()['reason']] * 2
     assert scope.dataframe[1].value.Vernr.tolist() == ['1', '2']
     assert any('Stickprovet blev mindre: 2 av önskade 3' in w.value for w in app.warning)
-    assert app.tabs[0].dataframe[0].value.Vernr.tolist() == ['1', '2', '3']
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value.Vernr.tolist() == ['1', '2', '3']
     app.button(key='supplier_all').click().run()
     assert not app.exception
-    assert app.tabs[0].dataframe[0].value.Vernr.tolist() == ['3']
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value.Vernr.tolist() == ['3']
     assert app.button(key='supplier_STRONG_MATCH').label.startswith('**1**')
-    assert app.tabs[4].dataframe[0].value.verification_id.tolist() == ['1', '3']
-    assert app.tabs[4].dataframe[1].value.Vernr.tolist() == ['1', '3']
+    assert next(tab for tab in app.tabs if tab.label == 'Manuellt urval').dataframe[0].value.verification_id.tolist() == ['1', '3']
+    assert next(tab for tab in app.tabs if tab.label == 'Manuellt urval').dataframe[1].value.Vernr.tolist() == ['1', '3']
     exported = pd.read_excel(BytesIO(upload.downloads['manual_sample.xlsx']), sheet_name=None)
     assert '2 av önskade 3' in exported['Urvalsmetod']['Förklaring till mindre stickprov'].iloc[0]
     assert exported['Urvalsidentiteter'].source_row_position.tolist() == [0, 1, 2]
