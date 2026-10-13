@@ -35,8 +35,8 @@ class SupplierAnalysis:
     def summary(self):
         counts = self.rows['supplier_match_status'].value_counts()
         return {'Leverantörsmatchning – analyserade rader': len(self.rows),
-                'Starka leverantörsträffar': int(counts.get(Status.STRONG_MATCH, 0)),
-                'Osäkra leverantörsträffar': int(counts.get(Status.AMBIGUOUS_MATCH, 0)),
+                'Starka namnmatchningar': int(counts.get(Status.STRONG_MATCH, 0)),
+                'Osäkra namnmatchningar': int(counts.get(Status.AMBIGUOUS_MATCH, 0)),
                 'Ingen match i aktuellt register': int(counts.get(Status.NO_MATCH, 0)),
                 'Leverantör ej identifierad': int(counts.get(Status.SUPPLIER_NOT_IDENTIFIED, 0)),
                 'Rader med datumvarning': int(self.rows['registry_date_warning'].sum())}

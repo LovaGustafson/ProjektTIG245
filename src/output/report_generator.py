@@ -10,8 +10,12 @@ from pathlib import Path
 from platform import python_version
 
 import pandas as pd
+from openpyxl.comments import Comment
 
-from src.presentation import context_fields, check_message, customer_facing_rows
+from src.presentation import (
+    context_fields, check_message, customer_facing_rows, supplier_evidence_rows,
+    REGISTRY_ORGANIZATION_COLUMNS, SUPPLIER_MATCH_EXPLANATION,
+)
 from src.models.result import CheckResult
 from src.models.verification import Verification
 from src.supplier_matching.analysis import enrich_rows
@@ -22,6 +26,8 @@ from src.sampling.manual_sample import SAMPLING_METHODS
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
 CHECK_COLUMNS = [field.name for field in fields(CheckResult)] + ["verification_date", "header_text", "code", "message"]
+SUPPLIER_EVIDENCE_SHEETS = ('Leverantörsmatchning', 'Leverantörskandidater', 'Möjliga avtal',
+                          'Urvalsidentiteter', 'Urvalspositioner')
 
 
 def _verification_rows(verifications: Iterable[Verification], supplier_analysis=None) -> pd.DataFrame:
@@ -121,6 +127,8 @@ def audit_sheets(data, *, source_context=None, run_summary=None, sampling_eviden
 def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
     prepared = {}
     for name, data in sheets.items():
+        if name in SUPPLIER_EVIDENCE_SHEETS:
+            data = supplier_evidence_rows(data)
         # Keep decimal precision instead of pandas' float conversion.
         export_data = customer_facing_rows(data).map(
             lambda value: str(value) if isinstance(value, Decimal) else value)
@@ -132,6 +140,22 @@ def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         for name, export_data in prepared.items():
             export_data.to_excel(writer, sheet_name=name, index=False)
+            # Explain generated evidence without renaming machine-readable fields
+            # or relabelling similarly named columns supplied in source sheets.
+            if name in SUPPLIER_EVIDENCE_SHEETS:
+                for cell in writer.sheets[name][1]:
+                    if cell.value in REGISTRY_ORGANIZATION_COLUMNS:
+                        cell.comment = Comment(REGISTRY_ORGANIZATION_COLUMNS[cell.value] + '. '
+                                               + SUPPLIER_MATCH_EXPLANATION, 'TIG245')
+                    elif cell.value == 'supplier_match_status':
+                        cell.comment = Comment('STRONG_MATCH: Stark namnmatchning. '
+                                               'AMBIGUOUS_MATCH: Osäker namnmatchning. '
+                                               + SUPPLIER_MATCH_EXPLANATION, 'TIG245')
+            elif name == 'Urvalsmetod':
+                for cell in writer.sheets[name][1]:
+                    if cell.value == 'Antal verifikationer med användbar leverantörsidentitet':
+                        cell.comment = Comment('Antal verifikationer med användbar leverantörsnyckel. '
+                                               + SUPPLIER_MATCH_EXPLANATION, 'TIG245')
             # Source strings are evidence, not executable spreadsheet formulas.
             # Also retain strings such as '#N/A' as literal text on read-back.
             for row in writer.sheets[name].iter_rows():

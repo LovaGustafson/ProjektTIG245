@@ -92,7 +92,7 @@ def test_streamlit_result_screen():
     assert len(app.tabs[0].dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
         'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
-        'Hämta manuellt stickprov', 'Hämta osäkra leverantörsträffar']
+        'Hämta manuellt stickprov', 'Hämta osäkra namnmatchningar']
 
 
 def test_flagged_selection_shows_all_reasons():

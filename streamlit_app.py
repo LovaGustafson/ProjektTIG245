@@ -59,9 +59,9 @@ REPORT_LABELS = {
         'Hämta manuellt stickprov', 'secondary',
     ),
     'uncertain_suppliers.xlsx': (
-        'Osäkra leverantörsträffar',
-        'Alla kvarvarande rader utan säker leverantörsträff, inklusive ej genomförbar matchning.',
-        'Hämta osäkra leverantörsträffar', 'secondary',
+        'Osäkra namnmatchningar',
+        'Alla kvarvarande rader utan stark namnmatchning, inklusive ej genomförbar matchning.',
+        'Hämta osäkra namnmatchningar', 'secondary',
     ),
 }
 
@@ -187,7 +187,7 @@ def show_reports(review):
         st.download_button(label, partial(review.downloads.__getitem__, filename), file_name=filename,
                            on_click='ignore',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    with st.expander('Avvikelser, manuellt stickprov och osäkra leverantörsträffar', expanded=True):
+    with st.expander('Avvikelser, manuellt stickprov och osäkra namnmatchningar', expanded=True):
         st.caption('Stickprovet väljs efter analysen och begränsar inte vilka rader som granskas.')
         for filename in ('flagged_invoices.xlsx', 'manual_sample.xlsx', 'uncertain_suppliers.xlsx'):
             st.download_button(REPORT_LABELS[filename][2], partial(review.downloads.__getitem__, filename),
@@ -267,7 +267,7 @@ def show_result(review):
                 [result.summary.eligible_verifications, sampling.target_size, len(sampling.sample)]):
             column.metric(label, value)
         st.caption(f'Urvalsenheten är en verifikation med alla dess rader. '
-                   f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsidentitet; '
+                   f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsnyckel; '
                    'leverantörsunikheten kan begränsa antalet ytterligare.')
         st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
         st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '

@@ -77,6 +77,15 @@ def supplier_details(result, status):
     return matches, candidates, contracts, source_rows(result, positions)
 
 
+def supplier_candidate_comparisons(matches, candidates):
+    """Attach existing row evidence to every candidate, preserving order and multiplicity."""
+    display = candidates.copy(deep=True)
+    evidence = matches.set_index('source_row_position')
+    for field in ('supplier_text_raw', 'supplier_match_status'):
+        display[field] = display['source_row_position'].map(evidence[field])
+    return display
+
+
 def contract_details(result, status):
     analysis = result.supplier_analysis
     contracts = analysis.contracts.loc[analysis.contracts['contract_period_status'] == status].copy(deep=True)

@@ -114,22 +114,22 @@ def test_switch_reset_home_and_chart_isolation(review):
     select(app, 'chart_population', 'included')
     select(app, 'chart_suppliers', 'AMBIGUOUS_MATCH')
     assert expander(app, 'Kvarvarande ·').proto.expanded
-    assert expander(app, 'Osäker träff ·').proto.expanded
+    assert expander(app, 'Osäker namnmatchning ·').proto.expanded
     select(app, 'chart_population', 'excluded')
     assert not expander(app, 'Kvarvarande ·').proto.expanded
     assert expander(app, 'Exkluderade ·').proto.expanded
     rerun(app)  # Unrelated rerun keeps both selections.
     assert expander(app, 'Exkluderade ·').proto.expanded
-    assert expander(app, 'Osäker träff ·').proto.expanded
+    assert expander(app, 'Osäker namnmatchning ·').proto.expanded
     old_id = chart_element(app, 'chart_population').proto.id
     app.button(key='overview_chart:chart_population:reset').click()
     rerun(app)
     assert not app.exception
     assert chart_element(app, 'chart_population').proto.id != old_id
     assert not expander(app, 'Exkluderade ·').proto.expanded
-    assert expander(app, 'Osäker träff ·').proto.expanded
+    assert expander(app, 'Osäker namnmatchning ·').proto.expanded
     select(app, 'chart_suppliers', None)  # Chart's native double-click clear.
-    assert not expander(app, 'Osäker träff ·').proto.expanded
+    assert not expander(app, 'Osäker namnmatchning ·').proto.expanded
     select(app, 'chart_population', 'included')
     app.button(key='home').click()
     rerun(app)
@@ -154,8 +154,8 @@ def test_view_scoped_suppliers_and_full_run_contracts(review):
     result.supplier_view.loc[result.supplier_view.source_row_position.eq(1), 'excluded_from_view'] = True
     app = overview_app(result)
     select(app, 'chart_suppliers', 'AMBIGUOUS_MATCH')
-    detail = expander(app, 'Osäker träff ·')
-    assert detail.label == 'Osäker träff · 1 rader'
+    detail = expander(app, 'Osäker namnmatchning ·')
+    assert detail.label == 'Osäker namnmatchning · 1 rader'
     assert evidence_table(detail, 'source_excel_row').source_row_position.tolist() == [3]
     select(app, 'chart_contracts', 'NOT_CHECKED')
     detail = expander(app, 'Ej verifierbar ·')

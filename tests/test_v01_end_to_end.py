@@ -77,7 +77,7 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
         'samlad_kontrollfil.xlsx': 'Samlad kontrollfil',
         'flagged_invoices.xlsx': 'Hämta avvikelserapport',
         'manual_sample.xlsx': 'Hämta manuellt stickprov',
-        'uncertain_suppliers.xlsx': 'Hämta osäkra leverantörsträffar',
+        'uncertain_suppliers.xlsx': 'Hämta osäkra namnmatchningar',
     }
     for index, filename in enumerate(download_labels):
         assert app.download_button[index].label == download_labels[filename]

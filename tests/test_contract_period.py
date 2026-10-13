@@ -76,7 +76,7 @@ def test_ambiguous_identity_never_gets_an_active_contract_conclusion():
     result = check_contract_period('2026-06-15', {'start_date': '2026-01-01', 'end_date': '2026-12-31'},
                                     identity_confirmed=False)
     assert result.contract_period_status == 'NOT_CHECKED'
-    assert 'leverantörsidentitet' in result.contract_period_reason
+    assert 'Ingen stark namnmatchning' in result.contract_period_reason
 
 
 def test_multiple_contracts_keep_distinct_periods_and_do_not_change_supplier_confidence():

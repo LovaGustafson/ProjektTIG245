@@ -1,14 +1,17 @@
 """Overview disclosure and provenance use synthetic, unchanged pipeline evidence."""
 from copy import deepcopy
+import json
 
 import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
 from src.models.result import CheckResult, CheckStatus
+from src.ingestion.contract_reader import registry_from_frame
 from src.pipeline import run_pipeline
+from src.supplier_matching.analysis import analyze_suppliers
 from src.ui_overview_details import (
-    source_rows, reason_counts, detection_details, supplier_details,
+    source_rows, reason_counts, detection_details, supplier_details, supplier_candidate_comparisons,
     contract_details, exclusion_details, verification_details,
 )
 from src.ui_run_summary import dashboard_tables
@@ -73,6 +76,111 @@ def test_supplier_drilldown_uses_exact_source_occurrences_and_backend_reasons(re
     assert reason_counts(matches, ['supplier_match_reason']).Antal.sum() == 2
 
 
+@pytest.fixture
+def candidate_analysis():
+    source = pd.DataFrame({
+        'verification_id': ['same'] * 4,
+        'header_text': ['Securitas Sverige AB Slutk1', 'Alpha AB Prelb 2',
+                        'SECURITAS SVERIGE A Slutk3', 'Text utan markör'],
+        'verification_date': ['2026-06-15'] * 4,
+    }, index=[42, 7, 105, 8])
+    registry = registry_from_frame(pd.DataFrame({
+        'supplier_name': ['Securitas Sverige Aktiebolag', 'Securitas Technology Sverige AB', 'Alpha AB'],
+        'organization_number': ['001', '002', '003'],
+        'start_date': ['2026-01-01'] * 3, 'end_date': ['2026-12-31'] * 3,
+    }))
+    return source, analyze_suppliers(source, registry)
+
+
+def candidate_app(matches, candidates):
+    app = AppTest.from_string(
+        'import streamlit as st\n'
+        'from src.ui_run_summary import show_supplier_candidates\n'
+        'show_supplier_candidates(st.session_state["matches"], st.session_state["candidates"])')
+    app.session_state['matches'] = matches
+    app.session_state['candidates'] = candidates
+    app.run()
+    assert not app.exception
+    return app
+
+
+def test_candidate_comparisons_link_by_source_position_and_keep_all_backend_evidence(candidate_analysis):
+    source, analysis = candidate_analysis
+    before_source = source.copy(deep=True)
+    before = deepcopy(analysis)
+    # Deliberately unrelated frame indexes and order; repeated Vernr must not be a join key.
+    candidates = analysis.candidates.iloc[[4, 0, 2, 3, 1]]
+    display = supplier_candidate_comparisons(analysis.rows.iloc[::-1], candidates)
+    assert display.source_row_position.tolist() == [105, 42, 7, 105, 42]
+    assert display.supplier_text_raw.tolist() == [
+        'SECURITAS SVERIGE A', 'Securitas Sverige AB', 'Alpha AB',
+        'SECURITAS SVERIGE A', 'Securitas Sverige AB']
+    assert display.supplier_match_status.tolist() == [
+        'AMBIGUOUS_MATCH', 'AMBIGUOUS_MATCH', 'STRONG_MATCH', 'AMBIGUOUS_MATCH', 'AMBIGUOUS_MATCH']
+    pd.testing.assert_frame_equal(display[candidates.columns], candidates)
+    # An exact, individually eligible candidate does not make the source-row match strong.
+    exact = display.loc[display.method.eq('exact_normalized') & display.source_row_position.eq(42)].iloc[0]
+    assert exact.score == 1 and exact.strong_eligible
+    assert exact.supplier_match_status == 'AMBIGUOUS_MATCH'
+    assert analysis.contracts.loc[analysis.contracts.source_row_position.eq(42), 'contract_period_status'].eq('NOT_CHECKED').all()
+    for field in ('rows', 'candidates', 'contracts'):
+        pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
+    pd.testing.assert_frame_equal(source, before_source)
+
+
+def test_candidate_table_shows_side_by_side_names_and_backend_status(candidate_analysis):
+    _, analysis = candidate_analysis
+    before = deepcopy(analysis)
+    app = candidate_app(analysis.rows, analysis.candidates)
+    table = app.dataframe[0]
+    order = ['supplier_text_raw', 'supplier_name', 'supplier_match_status',
+             'method', 'reason', 'score', 'organization_number', 'source_row_position']
+    assert list(table.proto.column_order) == order
+    labels = json.loads(table.proto.columns)
+    assert [labels[field]['label'] for field in order] == [
+        'Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret', 'Matchningsstatus',
+        'Matchningsmetod', 'Matchningsorsak', 'Matchningsscore',
+        'Organisationsnummer (från avtalsregistret)', 'Källposition']
+    assert labels['supplier_text_raw']['width'] == labels['supplier_name']['width'] == 'large'
+    assert table.value.supplier_text_raw.tolist() == [
+        'Securitas Sverige AB', 'Securitas Sverige AB', 'Alpha AB',
+        'SECURITAS SVERIGE A', 'SECURITAS SVERIGE A']
+    assert table.value.supplier_match_status.tolist() == [
+        'Osäker namnmatchning', 'Osäker namnmatchning', 'Stark namnmatchning',
+        'Osäker namnmatchning', 'Osäker namnmatchning']
+    for field in analysis.candidates.columns:
+        assert table.value[field].tolist() == analysis.candidates[field].tolist()
+    assert any('Matchningsstatus gäller källraden' in c.value and 'inte sannolikhet' in c.value for c in app.caption)
+    for field in ('rows', 'candidates', 'contracts'):
+        pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
+
+
+@pytest.mark.parametrize('missing_name', [None, '', '   '])
+def test_candidate_table_marks_missing_extracted_name_without_guessing(candidate_analysis, missing_name):
+    _, analysis = candidate_analysis
+    matches = analysis.rows.copy(deep=True)
+    matches.loc[matches.source_row_position.eq(42), 'supplier_text_raw'] = missing_name
+    shown = candidate_app(matches, analysis.candidates).dataframe[0].value
+    assert shown.loc[shown.source_row_position.eq(42), 'supplier_text_raw'].tolist() == [
+        'Inget extraherat leverantörsnamn'] * 2
+    assert len(shown) == len(analysis.candidates)
+    assert shown.loc[shown.source_row_position.eq(42), 'supplier_match_status'].eq('Osäker namnmatchning').all()
+
+
+def test_candidate_table_preserves_many_candidates_and_handles_empty_population(candidate_analysis):
+    _, analysis = candidate_analysis
+    candidates = pd.concat([analysis.candidates] * 120, ignore_index=True)
+    shown = candidate_app(analysis.rows, candidates).dataframe[0].value
+    assert len(shown) == 600
+    for field in candidates.columns:
+        assert shown[field].tolist() == candidates[field].tolist()
+    unidentified = analysis.rows.loc[analysis.rows.source_row_position.eq(8)]
+    empty = analysis.candidates.loc[analysis.candidates.source_row_position.eq(8)]
+    app = candidate_app(unidentified, empty)
+    assert not app.dataframe
+    assert any(c.value == 'Inga poster i denna kategori.' for c in app.caption)
+
+
 def test_unverifiable_contracts_keep_actual_reasons_and_comparison_unit(review):
     result = review.result
     contracts, rows = contract_details(result, 'NOT_CHECKED')
@@ -82,7 +190,7 @@ def test_unverifiable_contracts_keep_actual_reasons_and_comparison_unit(review):
         result.supplier_analysis.contracts.contract_period_status == 'NOT_CHECKED', 'contract_period_reason'].tolist()
     counts = reason_counts(contracts, ['contract_period_reason']).set_index('contract_period_reason').Antal.to_dict()
     assert counts == {
-        'Ingen säker leverantörsidentitet; kandidatens avtalsperiod har inte bedömts.': 4,
+        'Ingen stark namnmatchning; kandidatens avtalsperiod har inte bedömts.': 4,
         'Verifikationsdatum eller avtalets startdatum saknas eller kan inte läsas.': 2,
         'Datumet ligger på en periodgräns; regeln för giltighet på start-/slutdagen är inte bekräftad.': 2,
     }
@@ -185,7 +293,7 @@ def test_ui_progressive_disclosure_and_preserved_results(review):
     for table in exclusions.dataframe:
         assert table.value.source_row_position.tolist() == [0]
         assert table.value.exclusion_reason.tolist() == [before.filtering.reasons[0]]
-    ambiguous = expander(app, 'Osäker träff ·')
+    ambiguous = expander(app, 'Osäker namnmatchning ·')
     shown = evidence_table(ambiguous, 'supplier_match_status')
     assert shown.source_row_position.tolist() == [1, 3]
     assert shown.supplier_match_reason.tolist() == supplier_details(before, 'AMBIGUOUS_MATCH')[0].supplier_match_reason.tolist()
@@ -199,7 +307,15 @@ def test_ui_progressive_disclosure_and_preserved_results(review):
     assert any('inte att avtal saknas eller är ogiltigt' in m.value for m in unverifiable.markdown)
     explanation = expander(app, 'Vad betyder urvalspopulation')
     assert '40 verifikationer' in explanation.text[0].value
-    assert '39 rader med stark leverantörsträff' in explanation.text[0].value
+    assert '39 rader med stark namnmatchning' in explanation.text[0].value
+    assert any('juridisk identitet har inte verifierats mot internkontrollsfilen' in c.value for c in app.caption)
+    strong = expander(app, 'Stark namnmatchning ·')
+    assert any('En stark namnmatchning har identifierats i avtalsregistret.' in m.value for m in strong.markdown)
+    for container in (strong, ambiguous, unverifiable):
+        for table in container.dataframe:
+            for field in ('organization_number', 'matched_organization_number'):
+                if field in table.value:
+                    assert json.loads(table.proto.columns)[field]['label'] == 'Organisationsnummer (från avtalsregistret)'
     for name in ('original_data', 'standardized_data', 'ungrouped_data', 'sampling_evidence'):
         pd.testing.assert_frame_equal(getattr(review.result, name), getattr(before, name))
     for name in ('rows', 'candidates', 'contracts'):

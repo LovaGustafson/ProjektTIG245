@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 
 import pandas as pd
+import pytest
 from openpyxl import load_workbook
 from streamlit.testing.v1 import AppTest
 
@@ -88,7 +89,7 @@ def test_export_has_clean_header_matching_candidates_all_contracts_and_literal_f
         assert len(candidates[candidates.source_row_position == 1]) == 2
         possible = pd.read_excel(book, sheet_name='Möjliga avtal', dtype=object)
         assert possible[possible.source_row_position == 0]['contract_id'].tolist() == ['001', '002']
-        assert 'Starka leverantörsträffar' in pd.read_excel(book, sheet_name='Sammanfattning')['Mått'].tolist()
+        assert 'Starka namnmatchningar' in pd.read_excel(book, sheet_name='Sammanfattning')['Mått'].tolist()
     book = load_workbook(BytesIO(review.downloads['granskning.xlsx']))
     formula_cells = [cell for row in book['Möjliga avtal'] for cell in row if cell.value == '=SUM(1,2)']
     assert formula_cells and all(cell.data_type == 's' for cell in formula_cells)
@@ -141,8 +142,8 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     assert not app.exception
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('supplier_')] == ['6', '2', '1', '1', '2', '2']
     table = app.tabs[0].dataframe[0]
-    assert table.value['Leverantörsträff'].iloc[0] == '🟢 Stark leverantörsträff'
-    assert table.value['Leverantörsträff'].iloc[1] == '🟡 Osäker träff – manuell granskning'
+    assert table.value['Namnmatchning'].iloc[0] == '🟢 Stark namnmatchning'
+    assert table.value['Namnmatchning'].iloc[1] == '🟡 Osäker namnmatchning – manuell granskning'
     states = app._tree.get_widget_states()
     state = states.widgets.add()
     state.id = table.proto.id
@@ -155,10 +156,59 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     assert not app.exception
     review = app.session_state['review']
     assert len(review.result.supplier_analysis.rows) == 7
-    assert review.result.supplier_analysis.summary()['Starka leverantörsträffar'] == 3
+    assert review.result.supplier_analysis.summary()['Starka namnmatchningar'] == 3
     assert review.registry_content == registry_content
     app.date_input[0].set_value(date(2026, 9, 2)).run()
     assert not app.metric
     app.button[0].click().run()
     assert not app.exception
     assert app.session_state['review'].result.supplier_analysis.summary()['Rader med datumvarning'] == 0
+
+
+def test_exports_explain_name_matching_without_changing_evidence_schema_or_values():
+    review = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()))
+    analysis = review.result.supplier_analysis
+    source_before = review.result.original_data.copy(deep=True)
+    identity_before = review.result.sampling_result.identity_rows.copy(deep=True)
+    fingerprint = review.result.sampling_result.population_fingerprint
+    for filename in ('granskning.xlsx', 'samlad_kontrollfil.xlsx', 'cleaned_data.xlsx',
+                     'manual_sample.xlsx', 'flagged_invoices.xlsx', 'uncertain_suppliers.xlsx'):
+        content = review.downloads[filename]
+        book = load_workbook(BytesIO(content))
+        method_headers = {cell.value: cell for cell in book['Urvalsmetod'][1]}
+        assert method_headers['Antal verifikationer med användbar leverantörsidentitet'].comment.text.startswith(
+            'Antal verifikationer med användbar leverantörsnyckel.')
+        for sheet, original, org_field in (
+            ('Leverantörsmatchning', analysis.rows, 'matched_organization_number'),
+            ('Leverantörskandidater', analysis.candidates, 'organization_number'),
+            ('Möjliga avtal', analysis.contracts, 'organization_number'),
+            ('Urvalsidentiteter', review.result.sampling_result.identity_rows, 'matched_organization_number'),
+            ('Urvalspositioner', review.result.sampling_evidence, 'matched_organization_number'),
+        ):
+            headers = {cell.value: cell for cell in book[sheet][1]}
+            assert list(headers) == original.columns.tolist()
+            assert headers[org_field].comment.text.startswith('Organisationsnummer (från avtalsregistret).')
+            assert 'juridisk identitet har inte verifierats' in headers[org_field].comment.text
+            if 'supplier_match_status' in headers:
+                assert 'STRONG_MATCH: Stark namnmatchning' in headers['supplier_match_status'].comment.text
+            exported = pd.read_excel(BytesIO(content), sheet_name=sheet, dtype=object)
+            positions = exported.source_row_position.tolist()
+            expected = original.loc[original.source_row_position.isin(positions)]
+            for field in ('supplier_match_status', 'contract_period_status'):
+                if field in exported:
+                    assert exported[field].tolist() == expected[field].tolist()
+            if 'supplier_match_score' in exported:
+                assert exported.supplier_match_score.dropna().tolist() == pytest.approx(expected.supplier_match_score.dropna().tolist())
+                assert exported.loc[exported.supplier_match_status == 'STRONG_MATCH', 'supplier_match_reason'].str.startswith(
+                    'Stark namnmatchning i avtalsregistret.').all()
+            assert exported[org_field].fillna('').tolist() == expected[org_field].fillna('').tolist()
+            if 'identity_basis' in exported:
+                assert exported.loc[exported.identity_basis == 'STRONG_MATCH_ORG', 'identity_reason'].str.startswith(
+                    'Organisationsnummer från avtalsregistret efter stark namnmatchning;').all()
+        book.close()
+    summary = pd.read_excel(BytesIO(review.downloads['samlad_kontrollfil.xlsx']), 'Sammanfattning').set_index('Mått').Antal
+    assert summary['Starka namnmatchningar'] == summary['Rader med stark namnmatchning'] == 2
+    assert summary['Osäkra namnmatchningar'] == 1
+    pd.testing.assert_frame_equal(review.result.original_data, source_before)
+    pd.testing.assert_frame_equal(review.result.sampling_result.identity_rows, identity_before)
+    assert review.result.sampling_result.population_fingerprint == fingerprint
