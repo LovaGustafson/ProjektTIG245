@@ -133,24 +133,31 @@ def test_candidate_table_shows_side_by_side_names_and_backend_status(candidate_a
     before = deepcopy(analysis)
     app = candidate_app(analysis.rows, analysis.candidates)
     table = app.dataframe[0]
-    order = ['supplier_text_raw', 'supplier_name', 'supplier_match_status',
-             'method', 'reason', 'score', 'organization_number', 'source_row_position']
+    order = ['supplier_text_raw', 'supplier_name', 'match_result', 'score', 'explanation']
     assert list(table.proto.column_order) == order
     labels = json.loads(table.proto.columns)
     assert [labels[field]['label'] for field in order] == [
-        'Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret', 'Matchningsstatus',
-        'Matchningsmetod', 'Matchningsorsak', 'Matchningsscore',
-        'Organisationsnummer (från avtalsregistret)', 'Källposition']
+        'Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret', 'Matchningsresultat',
+        'Matchningsscore', 'Varför detta resultat?']
     assert labels['supplier_text_raw']['width'] == labels['supplier_name']['width'] == 'large'
     assert table.value.supplier_text_raw.tolist() == [
         'Securitas Sverige AB', 'Securitas Sverige AB', 'Alpha AB',
-        'SECURITAS SVERIGE A', 'SECURITAS SVERIGE A']
-    assert table.value.supplier_match_status.tolist() == [
+        'SECURITAS SVERIGE A', 'SECURITAS SVERIGE A', 'Inget extraherat leverantörsnamn']
+    assert table.value.match_result.tolist() == [
         'Osäker namnmatchning', 'Osäker namnmatchning', 'Stark namnmatchning',
-        'Osäker namnmatchning', 'Osäker namnmatchning']
-    for field in analysis.candidates.columns:
-        assert table.value[field].tolist() == analysis.candidates[field].tolist()
-    assert any('Matchningsstatus gäller källraden' in c.value and 'inte sannolikhet' in c.value for c in app.caption)
+        'Osäker namnmatchning', 'Osäker namnmatchning', 'Leverantör ej identifierad']
+    assert list(table.value.columns) == order
+    assert table.value.score.iloc[:5].tolist() == analysis.candidates.score.tolist()
+    assert pd.isna(table.value.score.iloc[5])
+    assert labels['score']['type_config']['format'] == '%.6f'
+    assert any('0–1' in c.value and 'inte sannolikheten' in c.value for c in app.caption)
+    technical = expander(app, 'Visa tekniska matchningsdetaljer')
+    assert not technical.proto.expanded
+    pd.testing.assert_frame_equal(technical.dataframe[0].value, analysis.rows)
+    pd.testing.assert_frame_equal(technical.dataframe[1].value[analysis.candidates.columns], analysis.candidates)
+    assert 'Flera möjliga leverantörer hittades.' in table.value.explanation.iloc[0]
+    assert 'överensstämmer efter standardisering' in table.value.explanation.iloc[0]
+    assert table.value.match_result.iloc[0] == 'Osäker namnmatchning' and table.value.score.iloc[0] == 1
     for field in ('rows', 'candidates', 'contracts'):
         pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
 
@@ -161,24 +168,30 @@ def test_candidate_table_marks_missing_extracted_name_without_guessing(candidate
     matches = analysis.rows.copy(deep=True)
     matches.loc[matches.source_row_position.eq(42), 'supplier_text_raw'] = missing_name
     shown = candidate_app(matches, analysis.candidates).dataframe[0].value
-    assert shown.loc[shown.source_row_position.eq(42), 'supplier_text_raw'].tolist() == [
+    assert shown.iloc[:2]['supplier_text_raw'].tolist() == [
         'Inget extraherat leverantörsnamn'] * 2
-    assert len(shown) == len(analysis.candidates)
-    assert shown.loc[shown.source_row_position.eq(42), 'supplier_match_status'].eq('Osäker namnmatchning').all()
+    assert len(shown) == len(analysis.candidates) + 1
+    assert shown.iloc[:2]['match_result'].eq('Osäker namnmatchning').all()
 
 
 def test_candidate_table_preserves_many_candidates_and_handles_empty_population(candidate_analysis):
     _, analysis = candidate_analysis
     candidates = pd.concat([analysis.candidates] * 120, ignore_index=True)
-    shown = candidate_app(analysis.rows, candidates).dataframe[0].value
-    assert len(shown) == 600
-    for field in candidates.columns:
-        assert shown[field].tolist() == candidates[field].tolist()
+    app = candidate_app(analysis.rows, candidates)
+    shown = app.dataframe[0].value
+    assert len(shown) == 601
+    assert shown.score.iloc[:600].tolist() == candidates.score.tolist()
+    technical = expander(app, 'Visa tekniska matchningsdetaljer')
+    pd.testing.assert_frame_equal(technical.dataframe[1].value[candidates.columns], candidates)
     unidentified = analysis.rows.loc[analysis.rows.source_row_position.eq(8)]
     empty = analysis.candidates.loc[analysis.candidates.source_row_position.eq(8)]
     app = candidate_app(unidentified, empty)
-    assert not app.dataframe
-    assert any(c.value == 'Inga poster i denna kategori.' for c in app.caption)
+    assert len(app.dataframe[0].value) == 1
+    assert pd.isna(app.dataframe[0].value.score.iloc[0])
+    assert app.dataframe[0].value.match_result.iloc[0] == 'Leverantör ej identifierad'
+    empty_app = candidate_app(unidentified.iloc[:0], empty)
+    assert not empty_app.dataframe
+    assert any(c.value == 'Inga poster i denna kategori.' for c in empty_app.caption)
 
 
 def test_unverifiable_contracts_keep_actual_reasons_and_comparison_unit(review):
