@@ -210,7 +210,15 @@
     font-size: 2rem;
     font-variant-numeric: tabular-nums;
 }
-@media (max-width: 1050px) {
-    .st-key-supplier_kpis [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
-    .st-key-supplier_kpis [data-testid="stColumn"] { flex: 1 1 45%; min-width: 45%; }
+/* Keep supplier labels whole; wrap cards according to available container space. */
+.st-key-supplier_kpis button p {
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+}
+.st-key-supplier_kpis [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+.st-key-supplier_kpis [data-testid="stColumn"] {
+    flex: 1 1 16rem;
+    min-width: min(100%, 16rem);
+    max-width: 100%;
 }

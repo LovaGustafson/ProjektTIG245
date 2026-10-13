@@ -12,6 +12,7 @@ from src.ui_support import analyze_upload, flagged_table, validation_table, disp
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
 from src.ui_support import select_sample_method
 from src.sampling.manual_sample import SAMPLING_METHODS
+from src.sampling.classification import CLASSIFICATION_LABELS, QUOTA_EXPLANATION, NO_INTERNAL_RULES
 from src.ui_filter_panel import filter_panel, clear_ui_filters
 from src.ui_supplier_panel import show_supplier_summary, supplier_review_table, show_supplier_detail
 from src.ui_supplier_matches import SCORE_EXPLANATION
@@ -211,6 +212,15 @@ def show_result(review):
     for message in result.filtering.todos:
         if message not in filter_column_errors(result.standardized_data):
             st.warning(message)
+    analysis_tab, manual_tab = st.tabs(['Analys och granskning', 'Manuellt urval'])
+    with analysis_tab:
+        show_analysis(review, flagged, errors)
+    with manual_tab:
+        show_manual_sample(review.result)
+
+
+def show_analysis(review, flagged, errors):
+    result = review.result
     show_run_summary(result)
     if result.supplier_analysis is not None:
         registry = result.supplier_analysis.registry
@@ -219,8 +229,8 @@ def show_result(review):
     st.divider()
     st.subheader('Detaljer och granskning')
     show_dashboard_kpis(result)
-    review_tab, excluded_tab, controls, reports, manual = st.tabs(
-        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval'])
+    review_tab, excluded_tab, controls, reports = st.tabs(
+        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export'])
     kept, excluded = review_tables(result.original_data, result.filtering)
     with review_tab:
         show_supplier_summary(result.supplier_analysis, result.supplier_view)
@@ -243,48 +253,69 @@ def show_result(review):
         show_overview(result, flagged, errors)
     with reports:
         show_reports(review)
-    with manual:
-        st.subheader('Urvalsmetod')
-        st.session_state.setdefault('manual_sample_method', result.sampling_result.method)
-        st.radio('Urvalsmetod', list(SAMPLING_METHODS), format_func=SAMPLING_METHODS.get,
-                 key='manual_sample_method', label_visibility='collapsed', on_change=change_sampling_method)
-        sampling = result.sampling_result
-        st.write('Aktiv urvalsmetod: ' + SAMPLING_METHODS[sampling.method])
-        if sampling.method == 'randomized':
-            st.button('Generera nytt slumpmässigt urval', key='regenerate_manual_sample',
-                      on_click=change_sampling_method, args=(True,))
-            st.text(f'Seed: {sampling.seed}')
-            st.caption('Seed och urval sparas under analysen. Samma seed och samma ordnade '
-                       'population med samma identitetsunderlag ger samma urval. Ett nytt seed kan '
-                       'ge samma fakturor, särskilt om få unika leverantörer är möjliga.')
-        else:
-            st.caption(f'Önskat antal beräknas som population // {sampling.interval}. '
-                       'Den stegvisa metoden har inte ett fast mål på 20.')
-        notice = st.session_state.pop('sampling_notice', None)
-        if notice:
-            st.info(notice)
-        for column, label, value in zip(st.columns(3),
-                ['Verifikationer i urvalspopulationen', 'Önskat antal fakturor', 'Faktiskt antal fakturor'],
-                [result.summary.eligible_verifications, sampling.target_size, len(sampling.sample)]):
-            column.metric(label, value)
-        st.caption(f'Urvalsenheten är en verifikation med alla dess rader. '
-                   f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsnyckel; '
-                   'leverantörsunikheten kan begränsa antalet ytterligare.')
-        st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
-        st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '
-                   'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
-        if result.sampling_result is not None and result.sampling_result.shortfall_message:
-            st.warning(result.sampling_result.shortfall_message)
-        groups, _ = verification_details(result, 'selected')
-        st.dataframe(display_dataframe(groups[['verification_id', 'supplier']]),
-                     column_config={'verification_id': 'Verifikation', 'supplier': 'Leverantör'},
-                     hide_index=True, width='stretch')
-        st.caption('Leverantörsnamnen kommer från stickprovets befintliga identitetsunderlag. '
-                   'Ett namn från Huvudtext är inte i sig en bekräftad juridisk identitet.')
-        # The reader supplies unique row indexes; grouping/sampling retain them.
-        positions = [position for verification in result.manual_sample for position in verification.rows.index]
-        sample = result.original_data.loc[positions].copy(deep=True)
-        show_filtered_table(sample, view='manual')
+
+
+def show_manual_sample(result):
+    st.subheader('Urvalsmetod')
+    st.session_state.setdefault('manual_sample_method', result.sampling_result.method)
+    st.radio('Urvalsmetod', list(SAMPLING_METHODS), format_func=SAMPLING_METHODS.get,
+             key='manual_sample_method', label_visibility='collapsed', on_change=change_sampling_method)
+    sampling = result.sampling_result
+    st.write('Aktiv urvalsmetod: ' + SAMPLING_METHODS[sampling.method])
+    if sampling.method == 'randomized':
+        st.button('Generera nytt slumpmässigt urval', key='regenerate_manual_sample',
+                  on_click=change_sampling_method, args=(True,))
+        st.text(f'Seed: {sampling.seed}')
+        st.caption('Seed och urval sparas under analysen. Samma seed och samma ordnade '
+                   'population med samma identitets- och klassificeringsunderlag ger samma urval. Ett nytt seed kan '
+                   'ge samma fakturor, särskilt om få unika leverantörer är möjliga.')
+    else:
+        st.caption(f'Önskat antal beräknas som population // {sampling.interval}. '
+                   'Den stegvisa metoden har inte ett fast mål på 20.')
+    notice = st.session_state.pop('sampling_notice', None)
+    if notice:
+        st.info(notice)
+    for column, label, value in zip(st.columns(3),
+            ['Verifikationer i urvalspopulationen', 'Önskat antal fakturor', 'Faktiskt antal fakturor'],
+            [result.summary.eligible_verifications, sampling.target_size, len(sampling.sample)]):
+        column.metric(label, value)
+    st.caption(f'Urvalsenheten är en verifikation med alla dess rader. '
+               f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsnyckel; '
+               'leverantörsunikheten kan begränsa antalet ytterligare.')
+    st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
+    counts = sampling.classification_counts
+    for column, status in zip(st.columns(3), ('INTERNAL', 'EXTERNAL', 'UNCLASSIFIED')):
+        column.metric({'INTERNAL': 'Bekräftat interna', 'EXTERNAL': 'Bekräftat externa',
+                       'UNCLASSIFIED': 'Oklassificerade'}[status], counts[status])
+    left, right = st.columns(2)
+    left.metric('Bortval på grund av kvotbegränsning', sampling.quota_rejections)
+    right.metric('Bortval på grund av klassificeringskonflikter', sampling.conflict_rejections)
+    st.caption('Antalen avser verifikationer. Bortval räknas efter respektive registrerat urvalsbeslut.')
+    st.caption(QUOTA_EXPLANATION)
+    if not sampling.internal_rules_active:
+        st.info(NO_INTERNAL_RULES)
+    st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '
+               'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
+    if result.sampling_result is not None and result.sampling_result.shortfall_message:
+        st.warning(result.sampling_result.shortfall_message)
+    groups, _ = verification_details(result, 'selected')
+    classification = sampling.decisions.set_index('population_position')['supplier_classification']
+    groups['supplier_classification'] = groups.population_position.map(classification).map(CLASSIFICATION_LABELS)
+    st.dataframe(display_dataframe(groups[['verification_id', 'supplier', 'supplier_classification']]),
+                 column_config={'verification_id': 'Verifikation', 'supplier': 'Leverantör',
+                                'supplier_classification': 'Klassificering'},
+                 hide_index=True, width='stretch')
+    st.caption('Leverantörsnamnen kommer från stickprovets befintliga identitetsunderlag. '
+               'Ett namn från Huvudtext är inte i sig en bekräftad juridisk identitet.')
+    # The reader supplies unique row indexes; grouping/sampling retain them.
+    positions = [position for verification in result.manual_sample for position in verification.rows.index]
+    sample = result.original_data.loc[positions].copy(deep=True)
+    show_filtered_table(sample, view='manual')
+    with st.expander('Urvalsbeslut, klassificering och källspårning', expanded=False):
+        st.caption('Samtliga verifikationer redovisas, även ej prövade och bortvalda. '
+                   'Slutkontrollen tar bort senast valda interna först utan att fylla platserna på nytt.')
+        st.dataframe(display_dataframe(sampling.decisions), hide_index=True, width='stretch')
+        st.dataframe(display_dataframe(sampling.classification_rows), hide_index=True, width='stretch')
 
 
 def select_kpi(key):

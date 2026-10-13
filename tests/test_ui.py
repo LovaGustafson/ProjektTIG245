@@ -78,10 +78,15 @@ def test_streamlit_result_screen():
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('kpi_')] == ['1', '1', '0', '0', '0']
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1']
     assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel']
-    assert [tab.label for tab in app.tabs] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval']
+    assert [tab.label for tab in app.tabs] == [
+        'Analys och granskning', 'Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval']
+    main_tabs = list(app.main.get('tab_container')[0].children.values())
+    assert [tab.label for tab in main_tabs] == ['Analys och granskning', 'Manuellt urval']
+    assert [tab.label for tab in main_tabs[0].get('tab_container')[0].children.values()] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
+    assert len(app.radio) == 1  # One shared sampling UI, no duplicated controls.
     assert len(app.get('download_button')) == 6
     assert not any('Vissa kontroller har inte bedömts' in warning.value for warning in app.warning)
-    assert not app.tabs[2].dataframe
+    assert not next(tab for tab in app.tabs if tab.label == 'Kontroller').dataframe
     assert not any('Detektionskontroller' in item.value for item in app.markdown)
     assert not any(e.label == 'Alla kontrollresultat' for e in app.expander)
     assert [i.value for i in app.info if i.value.startswith('Attestkontroll')] == [
@@ -89,7 +94,7 @@ def test_streamlit_result_screen():
         'som inte finns tillgängligt i prototypen.']
     assert review.result.summary.check_status_counts == {'NOT_CHECKED': 4}
     assert all(check.status == 'NOT_CHECKED' for r in review.result.detection_results for check in r.checks)
-    assert len(app.tabs[0].dataframe[-1].value) == 1
+    assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
         'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
         'Hämta manuellt stickprov', 'Hämta osäkra namnmatchningar']
@@ -125,7 +130,7 @@ def test_validation_tab_separates_schema_and_row_errors_without_mutating_evidenc
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    validation = next(e for e in app.tabs[0].expander if e.label == 'Valideringsfel')
+    validation = next(e for e in next(tab for tab in app.tabs if tab.label == 'Granskning').expander if e.label == 'Valideringsfel')
     schema, rows = [table.value for table in validation.dataframe]
     assert schema['code'].tolist() == ['missing_column']
     assert schema['field'].tolist() == ['Konto']
@@ -162,9 +167,9 @@ def test_flagged_selection_retains_swedish_reasons_rows_and_error_status():
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    flagged = next(table.value for table in app.tabs[0].dataframe if 'status' in table.value)
+    flagged = next(table.value for table in next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe if 'status' in table.value)
     assert flagged['status'].tolist() == ['Flaggad'] * 2
-    assert app.tabs[2].dataframe[0].value['Status'].tolist() == ['Flaggad', 'Tekniskt fel'] * 2
+    assert next(tab for tab in app.tabs if tab.label == 'Kontroller').dataframe[0].value['Status'].tolist() == ['Flaggad', 'Tekniskt fel'] * 2
     assert any('tekniska fel' in warning.value for warning in app.warning)
     app.selectbox[0].select(1).run()
     assert not app.exception
@@ -219,8 +224,8 @@ def test_mixed_amount_all_ui_tables_validation_and_export(tmp_path, caplog):
     assert not app.exception
     for table in app.dataframe:
         pa.Table.from_pandas(table.value, preserve_index=False)
-    assert app.tabs[0].dataframe[0].value['Utfall'].tolist() == ['12.5', text]
-    assert app.tabs[1].dataframe[0].value['Utfall'].iloc[1] == text
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Utfall'].tolist() == ['12.5', text]
+    assert next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value['Utfall'].iloc[1] == text
     app.selectbox[0].select(1).run()
     assert not app.exception
     assert not any('Serialization of dataframe to Arrow table was unsuccessful' in record.message

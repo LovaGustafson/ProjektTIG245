@@ -148,7 +148,7 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
     if chart_elements:
         assert elements.index('vega_lite_chart') < elements.index('dataframe')
     assert len(app.download_button) == 6
-    assert app.tabs[0].dataframe  # Existing source-linked detail views remain.
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe  # Existing source-linked detail views remain.
     pd.testing.assert_frame_equal(review.result.original_data, source_before)
     assert review.downloads == downloads_before
 
@@ -163,8 +163,8 @@ def test_graphical_overview_ignores_legacy_state_and_supports_category_selection
     app.session_state['chart_population'] = {'selection': {'category': [{'Status': 'included'}]}}
     app.run()
     assert not app.exception
-    assert len(app.metric) == 12
-    assert len(app.tabs[4].metric) == 3  # Population, target and actual sample size.
+    assert len(app.metric) == 17
+    assert len(next(tab for tab in app.tabs if tab.label == 'Manuellt urval').metric) == 8  # Size, classifications and quota/conflict rejections.
     charts = app.get('vega_lite_chart')
     assert len(charts) == 5
     for chart in charts:

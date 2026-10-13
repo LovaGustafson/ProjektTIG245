@@ -3,6 +3,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from src.models.supplier import SupplierMatchStatus
+from src.sampling.classification import QUOTA_EXPLANATION
 
 SAMPLE_ORDER = 'Första förekomst i källdata efter basfiltrering och gruppering; ingen omsortering.'
 SAMPLE_POPULATION = ('Alla kvarvarande verifikationer med användbart verifikations-ID, '
@@ -27,7 +28,7 @@ SAMPLE_IDENTITY = ('Stark namnmatchning använder organisationsnummer från avta
 
 def sampling_method_description(sampling_result):
     return (RANDOM_SAMPLE_METHOD if sampling_result is not None and sampling_result.method == 'randomized'
-            else SAMPLE_METHOD)
+            else SAMPLE_METHOD) + ' Klassificeringskonflikter och uppnådd internkvot medför bortval. ' + QUOTA_EXPLANATION
 
 
 @dataclass(frozen=True)

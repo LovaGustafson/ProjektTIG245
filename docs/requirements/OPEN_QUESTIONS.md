@@ -160,12 +160,27 @@ Deployment input still needed: the local source path for the default Koncernink�
 
 ## Q13 — Supplier-view classification and external-only sampling
 
+Del 1 update, 2026-10-13: the approved, implemented cap is floor(actual sample
+size / 20) confirmed internal verifications for both methods, including zero
+below 20. Use the target-size cap during selection and remove latest selected
+internal verifications as necessary against actual size, without backfilling or
+redrawing. External and unclassified suppliers remain eligible. Internal +
+unclassified means internal; external + unclassified means unclassified;
+internal + external or conflicting source rules means conflict and exclusion.
+UI/export preserve classification and decision evidence, counts and limitations.
+The latest user decision leaves the separate `sampling_supplier_rules` empty.
+No example name or organization number is authorized for activation. The quota
+is tested using synthetic rules and will apply when exact identities are confirmed.
+There is no complete approved external list. Unclassified is never external,
+and actual internal share may exceed 5%; the UI/export explicitly explain the
+absence of active internal rules. Existing base exclusions remain unchanged.
+
 Related requirements: M5, M6, C1–C3
 
-Status: Open — priority-2 stakeholder request, 2026-09-30
+Status: Sampling policy resolved; exact classification identities remain open.
 
 - Which exact supplier organization numbers or extracted names are confirmed as internal, external or irrelevant to the supplier-matching view? Supply a reason for each entry. Apoteket, Securitas, Försörjningsförvaltningen and Kantarellen are examples, not an approved list.
-- Does a future manual sample need to contain only external suppliers? This has **not** been confirmed; view classification must not change sampling eligibility.
+- External-only sampling is not required: confirmed external and unclassified suppliers are eligible under the approved quota policy. View classification remains separate from sampling classification.
 - Would a future authoritative internal/external field or register be supplied, and what does it mean? No such field is currently documented. Motp is not supplier identity or a classification signal.
 
 The implemented `supplier_view_rules` list is empty by default. Only explicitly

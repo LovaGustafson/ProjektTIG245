@@ -86,7 +86,7 @@ def test_ui_tables_details_and_kpi_drilldowns_hide_markers(review):
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert app.tabs[0].dataframe[0].value.Huvudtext.tolist()[:6] == DISPLAY
+    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value.Huvudtext.tolist()[:6] == DISPLAY
     for key in ('total', 'account', 'excluded'):
         app.button(key='kpi_' + key).click().run()
         assert not app.exception

@@ -12,6 +12,11 @@ def load_view_rules(settings_path):
     with open(settings_path, encoding='utf-8') as stream:
         config = yaml.safe_load(stream) or {}
     rules = config.get('supplier_view_rules', [])
+    return validate_classification_rules(rules)
+
+
+def validate_classification_rules(rules):
+    """Validate exact confirmed-rule evidence shared by view and sampling policies."""
     if not isinstance(rules, list):
         raise ValueError('supplier_view_rules must be a list')
     validated, ids = [], set()
