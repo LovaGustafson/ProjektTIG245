@@ -1,9 +1,46 @@
 """Explainable name resolution. Several plausible legal entities never auto-select."""
+from collections import Counter
 from difflib import SequenceMatcher
 
 from src.models.supplier import SupplierCandidate, SupplierMatch, SupplierMatchStatus as Status
 from src.supplier_matching.normalization import normalize_supplier, split_legal_form
 from src.supplier_matching.settings import MatchSettings
+
+
+def _one_character_edit(left, right):
+    """One insertion, deletion or substitution; transpositions are checked separately."""
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    for index, (a, b) in enumerate(zip(left, right)):
+        if a != b:
+            return (left[index + 1:] == right[index + 1:] if len(left) == len(right)
+                    else left[index:] == right[index + 1:])
+    return len(right) == len(left) + 1
+
+
+def _fuzzy_tokens_compatible(words, other_words):
+    """Conservative pilot guard, independent of token position and raw name score."""
+    left, right = Counter(words), Counter(other_words)
+    unmatched_left, unmatched_right = list((left - right).elements()), list((right - left).elements())
+    if not unmatched_left and not unmatched_right:
+        return True
+    if len(unmatched_left) != 1 or len(unmatched_right) != 1:
+        return False
+    a, b = unmatched_left[0], unmatched_right[0]
+    if min(len(a), len(b)) < 6:
+        return False
+    if len(a) == len(b):
+        differences = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+        if len(differences) == 2:
+            i, j = differences
+            if j == i + 1 and a[i] == b[j] and a[j] == b[i]:
+                # A single adjacent swap (e.g. Sverige/Svergie) is one typo,
+                # even when SequenceMatcher's token ratio falls below 0.90.
+                return True
+    return (_one_character_edit(a, b)
+            and SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.90)
 
 
 class SupplierMatcher:
@@ -46,6 +83,9 @@ class SupplierMatcher:
                     and len(words) == len(other_words) and not explicit_form_uncertain)
             reason = ('Hög teckenlikhet med samma antal namnord.' if safe else
                       'Liknande namn, men otillräcklig säkerhet eller avvikande namnord.')
+            if safe and not _fuzzy_tokens_compatible(words, other_words):
+                safe = False
+                reason = 'Leverantörsnamnen är delvis lika, men särskiljande namnled skiljer sig åt.'
         else:
             return None
         if conflict:

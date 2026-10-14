@@ -28,6 +28,26 @@ def supplier_review():
     return source, analysis
 
 
+def test_summary_preserves_full_heading_and_existing_drilldown(supplier_review):
+    _, analysis = supplier_review
+    before = [frame.copy(deep=True) for frame in (analysis.rows, analysis.candidates, analysis.contracts)]
+    app = AppTest.from_string(
+        'import streamlit as st\n'
+        'from src.ui_supplier_panel import show_supplier_summary\n'
+        'show_supplier_summary(st.session_state["analysis"])')
+    app.session_state['analysis'] = analysis
+    app.run()
+    assert not app.exception
+    assert app.subheader[0].value == 'Leverantörsmatchning mot Koncerninköp'
+    assert app.button(key='supplier_all').label == (
+        '**5**  \nLeverantörsmatchning – analyserade rader')
+    app.button(key='supplier_all').click().run()
+    assert not app.exception
+    assert app.session_state['selected_supplier'] == 'all'
+    for actual, expected in zip((analysis.rows, analysis.candidates, analysis.contracts), before, strict=True):
+        pd.testing.assert_frame_equal(actual, expected)
+
+
 def test_ambiguous_candidates_and_reasons_follow_source_rows_and_backend_rank(supplier_review):
     source, analysis = supplier_review
     display = supplier_review_table(source.loc[[9, 5, 2]], analysis)
