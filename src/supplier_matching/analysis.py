@@ -1,5 +1,5 @@
 """Apply identity resolution to each remaining transaction, retaining audit evidence."""
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, fields, replace
 import logging
 
 import pandas as pd
@@ -55,7 +55,8 @@ def analyze_suppliers(data, registry, *, settings=None, date_format=None, matche
             return row[field] if list(data.columns).count(field) == 1 else None
         result = engine.match(extract_supplier(value('header_text')))
         strong = result.status == Status.STRONG_MATCH
-        chosen = result.candidates[0] if strong else None
+        chosen = next((c for c in result.candidates
+                       if c.supplier.key == result.selected_supplier_key), None) if strong else None
         warning, date_status, date_message = registry_date_check(
             value('verification_date'), registry.snapshot_date, date_format=date_format)
         rows.append(dict(source_row_position=position, header_text_normalized=normalize_header_text(value('header_text')),
@@ -70,15 +71,21 @@ def analyze_suppliers(data, registry, *, settings=None, date_format=None, matche
             registry_date_check=date_status, registry_date_message=date_message))
         for candidate in result.candidates:
             supplier = candidate.supplier
+            selected = chosen is not None and supplier.key == chosen.supplier.key
             candidates.append(dict(source_row_position=position, supplier_key=supplier.key,
                 supplier_name=candidate.matched_name, organization_number=supplier.organization_number,
                 method=candidate.method, score=candidate.score, reason=candidate.reason,
                 strong_eligible=candidate.strong_eligible, contract_count=len(supplier.contracts)))
             for contract in supplier.contracts:
                 period = check_contract_period(value('verification_date'), contract,
-                    identity_confirmed=strong, date_format=date_format, policy=contract_policy)
+                    identity_confirmed=selected, date_format=date_format, policy=contract_policy)
+                if chosen is not None and not selected:
+                    period = replace(period, contract_period_reason=(
+                        'Alternativ leverantörskandidat som inte har valts; avtalsperioden har inte bedömts.'))
                 contracts.append(dict(contract, source_row_position=position,
-                                      supplier_key=supplier.key, supplier_match_status=result.status.value,
+                                      supplier_key=supplier.key,
+                                      supplier_match_status=(Status.STRONG_MATCH.value if selected else
+                                                             Status.AMBIGUOUS_MATCH.value),
                                       verification_date=value('verification_date'), **asdict(period)))
     analysis = SupplierAnalysis(registry, pd.DataFrame(rows, columns=ROW_FIELDS),
                                 pd.DataFrame(candidates, columns=CANDIDATE_FIELDS),

@@ -55,9 +55,21 @@ def readable_reason(reason, method):
     return reason
 
 
+def _is_selected_candidate(row, candidate):
+    """Match the recorded organization identity, not a displayed name or score."""
+    return (row['supplier_match_status'] == 'STRONG_MATCH'
+            and pd.notna(row['matched_organization_number'])
+            and pd.notna(candidate['organization_number'])
+            and candidate['organization_number'] == row['matched_organization_number'])
+
+
 def match_explanation(row, candidate=None):
     """Describe the engine's row decision separately from a candidate's similarity."""
     reason = readable_reason(row['supplier_match_reason'], row['supplier_match_method'])
+    if (candidate is not None and row['supplier_match_status'] == 'STRONG_MATCH'
+            and not _is_selected_candidate(row, candidate)):
+        return ('Alternativ kandidat – inte vald. Avtalsperioden har inte bedömts för denna identitet. '
+                + readable_reason(candidate['reason'], candidate['method']))
     if row['supplier_match_status'] == 'AMBIGUOUS_MATCH' and row['candidate_count'] > 1:
         recorded = f"{row['candidate_count']} möjliga registerkandidater; ingen har valts."
         reason = reason.replace(recorded,
@@ -77,6 +89,9 @@ def candidate_summary(row):
         return 'Ingen möjlig leverantör hittades.'
     if count == 1:
         return '1 möjlig leverantör hittades.'
+    if row['supplier_match_status'] == 'STRONG_MATCH':
+        return (f'{int(count)} möjliga leverantörer hittades – en har valts genom exakt namnmatchning; '
+                'övriga är alternativa kandidater.')
     return f'{int(count)} möjliga leverantörer hittades – kontrollera vilken som är rätt.'
 
 
@@ -87,9 +102,12 @@ def simple_match_rows(matches, candidates):
     records = []
     for candidate in linked.to_dict('records'):
         row = evidence.loc[candidate['source_row_position']]
+        label = MATCH_LABELS.get(row['supplier_match_status'], 'Okänt matchningsresultat')
+        if row['supplier_match_status'] == 'STRONG_MATCH' and not _is_selected_candidate(row, candidate):
+            label = 'Alternativ kandidat – inte vald'
         records.append({
             'supplier_text_raw': row['supplier_text_raw'], 'supplier_name': candidate['supplier_name'],
-            'match_result': MATCH_LABELS.get(row['supplier_match_status'], 'Okänt matchningsresultat'),
+            'match_result': label,
             'score': candidate['score'], 'explanation': match_explanation(row, candidate),
         })
     for row in matches.loc[~matches.source_row_position.isin(candidates.source_row_position)].to_dict('records'):
@@ -123,7 +141,9 @@ def show_supplier_candidates(matches, candidates):
     with st.expander('Visa tekniska matchningsdetaljer', expanded=False):
         st.caption('Källposition (från 0) kopplar varje kandidat till sin källrad. '
                    'Leverantörsnyckeln kopplar kandidaten till registeravtalen. '
-                   'Samtliga kandidater i den aktuella vyn visas i samma ordning som ovan.')
+                   'Samtliga kandidater i den aktuella vyn visas i samma ordning som ovan. '
+                   'supplier_match_status i kandidatjämförelsen avser källradens beslut; '
+                   'vald identitet anges av matched_organization_number i källradens resultat.')
         st.markdown('**Matchningsresultat per källrad – backendens ursprungliga uppgifter**')
         st.dataframe(matches, hide_index=True, width='stretch', column_config={
             **REGISTRY_ORGANIZATION_COLUMNS, 'candidate_count': 'Antal möjliga leverantörer',

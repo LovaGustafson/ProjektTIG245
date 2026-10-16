@@ -40,6 +40,8 @@ class SupplierMatch:
     score: float | None
     reason: str
     candidates: tuple[SupplierCandidate, ...] = ()
+    # Set by the match decision, never inferred by consumers from rank or score.
+    selected_supplier_key: str | None = None
 
 
 @dataclass

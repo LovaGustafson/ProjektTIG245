@@ -139,15 +139,18 @@ def test_exact_name_without_organization_number_remains_ambiguous():
     'ATEA Stockholm Sverige AB', 'Telia Stockholm Sverige AB',
 ])))
 @pytest.mark.parametrize('source', ['ATEA Stockholm Sverige AB', 'Telia Stockholm Sverige AB'])
-def test_exact_candidate_does_not_override_another_plausible_identity(source, names):
+def test_unique_exact_identity_takes_priority_over_phase2_rejected_alternative(source, names):
     result = engine(*names).match(source)
-    assert result.status == 'AMBIGUOUS_MATCH'
+    # Phase 3B explicitly permits this exception; Phase 2 still rejects the alternative.
+    assert result.status == 'STRONG_MATCH'
     assert result.score == 1  # Even a perfect first-candidate score is not identity probability.
     assert len(result.candidates) == 2
     assert {candidate.matched_name for candidate in result.candidates} == set(names)
     assert result.candidates[0].matched_name == source
     assert result.candidates[0].method == 'exact_normalized'
     assert result.candidates[1].method == 'fuzzy'
+    assert not result.candidates[1].strong_eligible
+    assert result.selected_supplier_key == result.candidates[0].supplier.key
     assert all(candidate.reason for candidate in result.candidates)
 
 
