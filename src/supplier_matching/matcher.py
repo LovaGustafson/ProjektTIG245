@@ -1,4 +1,4 @@
-"""Explainable name resolution. Several plausible legal entities never auto-select."""
+"""Explainable name resolution with conservative, identity-aware exact priority."""
 from collections import Counter
 from difflib import SequenceMatcher
 
@@ -122,9 +122,24 @@ class SupplierMatcher:
             return SupplierMatch(supplier_text, query, Status.NO_MATCH, 'none', None,
                 'Ingen leverantörsmatch hittades i aktuell Koncerninköpslista.')
         best = candidates[0]
+        selected = None
         if len(candidates) == 1 and best.strong_eligible:
-            return SupplierMatch(supplier_text, query, Status.STRONG_MATCH, best.method, best.score,
-                'Stark namnmatchning i avtalsregistret. ' + best.reason, candidates)
+            selected = best
+        else:
+            exact = [c for c in candidates if c.method == 'exact_normalized']
+            # Representatives already preserve any strong-eligible alias per identity.
+            # Numberless exact records are separate identities and also block priority.
+            if (len(exact) == 1 and exact[0].strong_eligible
+                    and not any(c.strong_eligible for c in candidates
+                                if c.supplier.key != exact[0].supplier.key)):
+                selected = exact[0]
+        if selected is not None:
+            reason = 'Stark namnmatchning i avtalsregistret. ' + selected.reason
+            if len(candidates) > 1:
+                reason += (f' En entydig exakt namnmatchning har valts; {len(candidates) - 1} '
+                           'svagare alternativa kandidater bevaras för granskning och har inte valts.')
+            return SupplierMatch(supplier_text, query, Status.STRONG_MATCH, selected.method, selected.score,
+                reason, candidates, selected_supplier_key=selected.supplier.key)
         reason = 'Flera eller osäkra namnmatchningar – kontrollera manuellt. '
         if len(candidates) > 1:
             reason += f'{len(candidates)} möjliga registerkandidater; ingen har valts.'

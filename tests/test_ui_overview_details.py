@@ -116,13 +116,15 @@ def test_candidate_comparisons_link_by_source_position_and_keep_all_backend_evid
         'SECURITAS SVERIGE A', 'Securitas Sverige AB', 'Alpha AB',
         'SECURITAS SVERIGE A', 'Securitas Sverige AB']
     assert display.supplier_match_status.tolist() == [
-        'AMBIGUOUS_MATCH', 'AMBIGUOUS_MATCH', 'STRONG_MATCH', 'AMBIGUOUS_MATCH', 'AMBIGUOUS_MATCH']
+        'AMBIGUOUS_MATCH', 'STRONG_MATCH', 'STRONG_MATCH', 'AMBIGUOUS_MATCH', 'STRONG_MATCH']
     pd.testing.assert_frame_equal(display[candidates.columns], candidates)
-    # An exact, individually eligible candidate does not make the source-row match strong.
+    # Phase 3B selects the unique exact identity; row status does not select the alternative.
     exact = display.loc[display.method.eq('exact_normalized') & display.source_row_position.eq(42)].iloc[0]
     assert exact.score == 1 and exact.strong_eligible
-    assert exact.supplier_match_status == 'AMBIGUOUS_MATCH'
-    assert analysis.contracts.loc[analysis.contracts.source_row_position.eq(42), 'contract_period_status'].eq('NOT_CHECKED').all()
+    assert exact.supplier_match_status == 'STRONG_MATCH'
+    contracts = analysis.contracts.loc[analysis.contracts.source_row_position.eq(42)]
+    assert contracts.loc[contracts.organization_number.eq('001'), 'contract_period_status'].eq('PASS').all()
+    assert contracts.loc[contracts.organization_number.eq('002'), 'contract_period_status'].eq('NOT_CHECKED').all()
     for field in ('rows', 'candidates', 'contracts'):
         pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
     pd.testing.assert_frame_equal(source, before_source)
@@ -144,7 +146,7 @@ def test_candidate_table_shows_side_by_side_names_and_backend_status(candidate_a
         'Securitas Sverige AB', 'Securitas Sverige AB', 'Alpha AB',
         'SECURITAS SVERIGE A', 'SECURITAS SVERIGE A', 'Inget extraherat leverantörsnamn']
     assert table.value.match_result.tolist() == [
-        'Osäker namnmatchning', 'Osäker namnmatchning', 'Stark namnmatchning',
+        'Stark namnmatchning', 'Alternativ kandidat – inte vald', 'Stark namnmatchning',
         'Osäker namnmatchning', 'Osäker namnmatchning', 'Leverantör ej identifierad']
     assert list(table.value.columns) == order
     assert table.value.score.iloc[:5].tolist() == analysis.candidates.score.tolist()
@@ -155,9 +157,10 @@ def test_candidate_table_shows_side_by_side_names_and_backend_status(candidate_a
     assert not technical.proto.expanded
     pd.testing.assert_frame_equal(technical.dataframe[0].value, analysis.rows)
     pd.testing.assert_frame_equal(technical.dataframe[1].value[analysis.candidates.columns], analysis.candidates)
-    assert 'Flera möjliga leverantörer hittades.' in table.value.explanation.iloc[0]
+    assert 'entydig exakt namnmatchning har valts' in table.value.explanation.iloc[0]
+    assert 'inte vald' in table.value.explanation.iloc[1]
     assert 'överensstämmer efter standardisering' in table.value.explanation.iloc[0]
-    assert table.value.match_result.iloc[0] == 'Osäker namnmatchning' and table.value.score.iloc[0] == 1
+    assert table.value.match_result.iloc[0] == 'Stark namnmatchning' and table.value.score.iloc[0] == 1
     for field in ('rows', 'candidates', 'contracts'):
         pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
 
@@ -171,7 +174,7 @@ def test_candidate_table_marks_missing_extracted_name_without_guessing(candidate
     assert shown.iloc[:2]['supplier_text_raw'].tolist() == [
         'Inget extraherat leverantörsnamn'] * 2
     assert len(shown) == len(analysis.candidates) + 1
-    assert shown.iloc[:2]['match_result'].eq('Osäker namnmatchning').all()
+    assert shown.iloc[:2]['match_result'].tolist() == ['Stark namnmatchning', 'Alternativ kandidat – inte vald']
 
 
 def test_candidate_table_preserves_many_candidates_and_handles_empty_population(candidate_analysis):

@@ -36,21 +36,22 @@ def test_exact_normalized_and_fuzzy_and_unidentified():
     assert engine.match(None).status == 'SUPPLIER_NOT_IDENTIFIED'
 
 
-@pytest.mark.parametrize('query, names', [
-    ('Input interiör', ['Input interiör AB', 'Input Interiör Göteborg AB']),
-    ('Swedbank Pay AB', ['Swedbank AB']),
-    ('Synologen Servi', ['Synologen AB']),
-    ('AJ Medical HB', ['AJ Medical KB']),
-    ('AJ Medical Utrustning Sverige HB', ['AJ Medical Utrustning Sverige KB']),
-    ('Securitas Säkerhetsutrustning Sverige AB', ['Securitas Säkerhetsutrustning Sverige A AB']),
-    ('Acme Medical Global AB', ['Acme Medical Global AB X AB']),
-    ('Telia Sverige AB', ['Telia Sverige AB', 'Telia Sverige AB']),
-    ('Telia Sverige AB', ['Telia Sverige AB', 'Telia Svergie AB']),
-    ('AB', ['AB X']), ('Input', ['Input interiör AB']),
+@pytest.mark.parametrize('query, names, expected', [
+    ('Input interiör', ['Input interiör AB', 'Input Interiör Göteborg AB'], 'AMBIGUOUS_MATCH'),
+    ('Swedbank Pay AB', ['Swedbank AB'], 'AMBIGUOUS_MATCH'),
+    ('Synologen Servi', ['Synologen AB'], 'AMBIGUOUS_MATCH'),
+    ('AJ Medical HB', ['AJ Medical KB'], 'AMBIGUOUS_MATCH'),
+    ('AJ Medical Utrustning Sverige HB', ['AJ Medical Utrustning Sverige KB'], 'AMBIGUOUS_MATCH'),
+    ('Securitas Säkerhetsutrustning Sverige AB', ['Securitas Säkerhetsutrustning Sverige A AB'], 'AMBIGUOUS_MATCH'),
+    ('Acme Medical Global AB', ['Acme Medical Global AB X AB'], 'AMBIGUOUS_MATCH'),
+    ('Telia Sverige AB', ['Telia Sverige AB', 'Telia Sverige AB'], 'AMBIGUOUS_MATCH'),
+    # The 0.9375 typo alternative is not strong-eligible; Phase 3B selects the unique exact identity.
+    ('Telia Sverige AB', ['Telia Sverige AB', 'Telia Svergie AB'], 'STRONG_MATCH'),
+    ('AB', ['AB X'], 'AMBIGUOUS_MATCH'), ('Input', ['Input interiör AB'], 'AMBIGUOUS_MATCH'),
 ])
-def test_ambiguity_is_never_auto_approved(query, names):
+def test_conservative_cases_and_controlled_exact_exception(query, names, expected):
     result = matcher(*names).match(query)
-    assert result.status == 'AMBIGUOUS_MATCH'
+    assert result.status == expected
     assert result.candidates
     assert all(c.reason for c in result.candidates)
 
