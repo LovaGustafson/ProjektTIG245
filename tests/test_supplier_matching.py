@@ -4,11 +4,12 @@ import pytest
 from src.ingestion.contract_reader import registry_from_frame
 from src.supplier_matching.matcher import SupplierMatcher
 from src.supplier_matching.settings import MatchSettings
+from tests.synthetic_org import org
 
 
 def matcher(*names):
     registry = registry_from_frame(pd.DataFrame({
-        'supplier_name': names, 'organization_number': [str(i) for i in range(len(names))]}))
+        'supplier_name': names, 'organization_number': [org(i) for i in range(len(names))]}))
     return SupplierMatcher(registry.suppliers)
 
 
@@ -65,7 +66,7 @@ def test_legal_form_reason_and_missing_organization():
 
 def test_same_organization_multiple_names_and_contracts_is_one_candidate():
     registry = registry_from_frame(pd.DataFrame({'supplier_name': ['Telia Sverige AB', 'Telia Sverige Aktiebolag'],
-                                                'organization_number': ['123456-7890', '1234567890']}))
+                                                'organization_number': [f'{org(123)[:6]}-{org(123)[6:]}', org(123)]}))
     result = SupplierMatcher(registry.suppliers).match('Telia Sverige A')
     assert result.status == 'STRONG_MATCH' and len(result.candidates) == 1
     assert len(result.candidates[0].supplier.contracts) == 2

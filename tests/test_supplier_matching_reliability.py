@@ -11,11 +11,12 @@ from src.ingestion.contract_reader import registry_from_frame
 from src.supplier_matching.analysis import analyze_suppliers
 from src.supplier_matching.matcher import SupplierMatcher
 from src.supplier_matching.normalization import normalize_supplier
+from tests.synthetic_org import org
 
 
 def engine(*names, organization_numbers=None):
     if organization_numbers is None:
-        organization_numbers = [str(i + 1) for i in range(len(names))]
+        organization_numbers = [org(i + 1) for i in range(len(names))]
     registry = registry_from_frame(pd.DataFrame({
         'supplier_name': names, 'organization_number': organization_numbers,
     }))
@@ -161,10 +162,10 @@ def test_explicit_same_organization_aliases_keep_one_identity_and_all_contract_r
     # Unlike the conflicting-identity fixture, the register explicitly assigns
     # both aliases to one entity. Inspect the reliable alias before alias reduction,
     # regardless of register order.
-    result = engine(*names, organization_numbers=['1', '1']).match('Acme Medical Global AB')
+    result = engine(*names, organization_numbers=[org(1), org(1)]).match('Acme Medical Global AB')
     assert result.status == 'STRONG_MATCH'
     assert len(result.candidates) == 1
-    assert result.candidates[0].supplier.organization_number == '1'
+    assert result.candidates[0].supplier.organization_number == org(1)
     assert result.candidates[0].matched_name == 'Acme Medical Gloabl AB'
     assert len(result.candidates[0].supplier.contracts) == 2
 
@@ -173,7 +174,7 @@ def test_explicit_same_organization_aliases_keep_one_identity_and_all_contract_r
 def false_strong_source_analysis():
     registry = registry_from_frame(pd.DataFrame({
         'supplier_name': ['Telia Stockholm Sverige AB'] * 2,
-        'organization_number': ['1'] * 2,
+        'organization_number': [org(1)] * 2,
         'contract_id': ['synthetic-contract-1', 'synthetic-contract-2'],
     }))
     source = pd.DataFrame({

@@ -188,3 +188,33 @@ confirmed entries apply; unclassified and conflicting cases remain visible.
 Existing exact base exclusions for Försörjningsförvaltning, Fastighetstöd and mall
 remain unchanged and separate. The additional trailing `en` is not an authorized alias.
 See [priority-2 audit](PRIORITY2_AUDIT.md) for evidence and boundaries.
+
+## Q14 — Organization-number policy and identifier exposure
+
+Related requirements: M6, S4, C1–C3; M7 data guardrail; W1 boundaries
+
+Status: Open. An interim technical policy is implemented in Phase 3C (uncommitted on branch `feature/suda-identity-validation-fredrik`). **D5 must be reviewed before the pull request is opened.**
+
+Phase 3C treats a register organization number as a usable supplier identity only when it is ten digits, passes the Luhn check and has a third digit of at least 2. Everything else stays a separate identity that cannot be strongly matched and requires manual review. See the [Phase 3C section of PROJECT_SPEC.md](../../PROJECT_SPEC.md#organization-number-validation-and-supplier-identity-phase-3c). This is technical structure validation only. It does not verify that an organization is registered, active or the invoiced supplier, and it is not a customer-approved business rule.
+
+| ID | Question | Interim behavior implemented (not an approved rule) |
+| :-- | :-- | :-- |
+| D1 | Does the Koncerninköp register contain only Swedish organization numbers? | Any other value is `INVALID_FORMAT` and cannot be selected. |
+| D2 | Should the 12-digit form `16NNNNNNNNNN` be normalized to ten digits? | No normalization; `INVALID_FORMAT`. |
+| D3 | Should personal or coordination number forms, for example sole traders, be accepted as supplier identity? This also concerns data protection. | Not usable (`NOT_ORGANIZATION_NUMBER_FORMAT`); `AMBIGUOUS_MATCH` and manual review. |
+| D4 | How should foreign suppliers be identified? | Foreign identifiers are `INVALID_FORMAT`; matching falls back to manual review and the UI calls them not a valid Swedish organization number. |
+| D5 | May raw unusable identifiers, including personal-number forms, appear in contract data, the UI and Excel exports? | Candidate and row-level organization-number fields are empty for unusable values. The original value is retained in contract rows, shown in the row-detail contract expander and exported in the `Möjliga avtal` sheet. |
+| D6 | Should the `selected_supplier_key` consistency check stop the analysis or degrade the row? | Implemented in Phase 3C as `ValueError`, which stops the analysis. It cannot be triggered by input data. |
+| D7 | Should the real register be profiled locally before merge, counting values per status without any value leaving the machine (M7)? | Recommended; not performed. |
+
+**D5 requires review before the pull request.** Unusable identifiers are kept unchanged in contract evidence to preserve source traceability. Some of these values can have personal identity number form, for example sole traders, and therefore may be personal data. They are visible in the review UI's contract details and written to the `Möjliga avtal` export sheet. Before the pull request, the project must decide whether this exposure is acceptable or whether those values should be masked, omitted or handled separately, and how any change preserves traceability to the register row. No masking is implemented, and none should be added without that decision.
+
+Limitations of the interim policy:
+
+- Sole traders, foreign suppliers and 12-digit identifiers can never become `STRONG_MATCH`. This increases manual review and can change sampling keys and contract-period checks on reanalysis.
+- A usable status is not legal identity verification. No external register is consulted.
+- The group digit and date parts are not validated.
+- The consistency check trusts candidate flags produced by the matcher; forged flags are not detected.
+- Saved analyses, selections and export snapshots are not rematched; a new analysis is required to apply the policy.
+
+Until resolved: keep the conservative interim behavior, do not treat a usable status as proof of legal identity, and do not change the exposure of raw identifiers without a D5 decision.

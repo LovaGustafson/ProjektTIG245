@@ -11,6 +11,7 @@ from src.sampling.manual_sample import plan_manual_sample, plan_random_sample
 from src.supplier_matching.view_scope import classify_supplier_view, validate_classification_rules
 from src.ui_support import analyze_upload, select_sample_method
 from tests.test_feature_package import invoices, registry, settings, workbook
+from tests.synthetic_org import org
 
 
 SOURCE = 'ATEA Stockholm Sverige AB'
@@ -23,7 +24,7 @@ def review(tmp_path):
     path = settings(tmp_path)
     config = yaml.safe_load(path.read_text(encoding='utf-8'))
     # Explicit synthetic rule, never a classification of these companies in production.
-    rule = dict(id='synthetic-org', match_field='organization_number', value='123',
+    rule = dict(id='synthetic-org', match_field='organization_number', value=org(123),
                 classification='INTERNAL', reason='Syntetisk testregel', confirmed=True)
     config['sampling_supplier_rules'] = config['supplier_view_rules'] = [rule]
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding='utf-8')
@@ -51,9 +52,9 @@ def test_downgrade_preserves_analysis_candidates_contracts_and_original_values(r
     assert uncertain.supplier_match_score.eq(0.941176).all()
     assert uncertain.supplier_match_reason.str.contains(REASON, regex=False).all()
     assert matches.loc[[20, 22]].supplier_match_status.eq('STRONG_MATCH').all()
-    assert matches.loc[[20, 22]].matched_organization_number.eq('123').all()
+    assert matches.loc[[20, 22]].matched_organization_number.eq(org(123)).all()
     assert analysis.candidates.source_row_position.tolist() == [0, 19, 20, 22]
-    assert analysis.candidates.organization_number.eq('123').all()
+    assert analysis.candidates.organization_number.eq(org(123)).all()
     assert analysis.contracts.source_row_position.tolist() == [0, 0, 19, 19, 20, 20, 22, 22]
     contracts = analysis.contracts
     assert contracts.loc[contracts.source_row_position.isin([0, 19])].contract_period_status.eq('NOT_CHECKED').all()
@@ -78,7 +79,7 @@ def test_classification_and_sampling_use_fallback_without_selecting_candidate_or
     assert rows.loc[[0, 19]].identity_basis.eq('NORMALIZED_HEADER_NAME').all()
     assert rows.loc[[0, 19]].classification.eq('UNCLASSIFIED').all()
     assert rows.loc[[0, 19]].matched_organization_number.isna().all()
-    assert rows.loc[[20, 22]].supplier_key.eq('org:123').all()
+    assert rows.loc[[20, 22]].supplier_key.eq(f'org:{org(123)}').all()
     assert rows.loc[[20, 22]].classification.eq('INTERNAL').all()
     view = result.supplier_view.set_index('source_row_position')
     assert view.loc[[0, 19]].classification.eq('UNCLASSIFIED').all()
@@ -157,7 +158,7 @@ def test_reanalysis_can_change_selection_but_does_not_rewrite_saved_legacy_plan(
     assert saved.decisions.iloc[19].decision == 'INTERNAL_QUOTA'
     assert review.result.sampling_result.decisions.iloc[19].decision == 'SELECTED'
     assert select_sample_method(legacy, 'systematic').result.sampling_result is saved
-    assert saved.identity_rows.loc[saved.identity_rows.source_row_position.eq(19)].supplier_key.tolist() == ['org:123']
+    assert saved.identity_rows.loc[saved.identity_rows.source_row_position.eq(19)].supplier_key.tolist() == [f'org:{org(123)}']
     exported = pd.read_excel(BytesIO(legacy.downloads['manual_sample.xlsx']), 'Källspårning')
     assert exported.source_row_position.tolist() == [21]
 

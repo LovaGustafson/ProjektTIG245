@@ -43,6 +43,20 @@ def _fuzzy_tokens_compatible(words, other_words):
             and SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.90)
 
 
+def select_strong_candidate(candidates: tuple[SupplierCandidate, ...]) -> SupplierCandidate | None:
+    """Select an eligible identity; competing strong names block exact priority."""
+    if len(candidates) == 1 and candidates[0].strong_eligible:
+        return candidates[0]
+    exact = [c for c in candidates if c.method == 'exact_normalized']
+    # Usable identities retain their strongest eligible alias; unknown rows stay separate.
+    # A strong competing name blocks even when its identity cannot itself be selected.
+    if (len(exact) == 1 and exact[0].strong_eligible
+            and not any(c.name_strong for c in candidates
+                        if c.supplier.key != exact[0].supplier.key)):
+        return exact[0]
+    return None
+
+
 class SupplierMatcher:
     def __init__(self, suppliers, settings=None):
         self.settings = settings or MatchSettings()
@@ -93,10 +107,14 @@ class SupplierMatcher:
             reason += f' Olika bolagsformer: {query_form.upper()} / {name_form.upper()}.'
         elif explicit_form_uncertain:
             reason += ' Bolagsformen kan inte bekräftas.'
+        name_safe = safe
         if not supplier.organization_number:
             safe = False
-            reason += ' Organisationsnummer saknas i registret.'
-        return SupplierCandidate(supplier, name, method, round(score, 6), reason, safe)
+            if supplier.organization_number_status in (None, 'MISSING'):
+                reason += ' Organisationsnummer saknas i registret.'
+            else:
+                reason += ' Organisationsnumret i registret är inte ett tekniskt giltigt organisationsnummer.'
+        return SupplierCandidate(supplier, name, method, round(score, 6), reason, safe, name_safe)
 
     def match(self, supplier_text):
         query = normalize_supplier(supplier_text)
@@ -122,17 +140,7 @@ class SupplierMatcher:
             return SupplierMatch(supplier_text, query, Status.NO_MATCH, 'none', None,
                 'Ingen leverantörsmatch hittades i aktuell Koncerninköpslista.')
         best = candidates[0]
-        selected = None
-        if len(candidates) == 1 and best.strong_eligible:
-            selected = best
-        else:
-            exact = [c for c in candidates if c.method == 'exact_normalized']
-            # Representatives already preserve any strong-eligible alias per identity.
-            # Numberless exact records are separate identities and also block priority.
-            if (len(exact) == 1 and exact[0].strong_eligible
-                    and not any(c.strong_eligible for c in candidates
-                                if c.supplier.key != exact[0].supplier.key)):
-                selected = exact[0]
+        selected = select_strong_candidate(candidates)
         if selected is not None:
             reason = 'Stark namnmatchning i avtalsregistret. ' + selected.reason
             if len(candidates) > 1:

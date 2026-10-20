@@ -4,11 +4,12 @@ import pandas as pd
 
 from src.ingestion.contract_reader import registry_from_frame
 from src.supplier_matching.analysis import analyze_suppliers, enrich_rows
+from tests.synthetic_org import org
 
 
 def test_row_identity_contracts_date_warning_and_counterparty_is_only_metadata():
     registry = registry_from_frame(pd.DataFrame({
-        'supplier_name': ['Telia Sverige AB'] * 2, 'organization_number': ['123'] * 2,
+        'supplier_name': ['Telia Sverige AB'] * 2, 'organization_number': [org(123)] * 2,
         'contract_id': ['001', '002'], 'start_date': ['2025-01-01'] * 2,
         'end_date': ['2027-12-31'] * 2}), snapshot=date(2026, 8, 31))
     data = pd.DataFrame({'header_text': ['Telia Sverige A Slutk 1', 'Saknad Leverantör AB Prelb 2', None],
@@ -33,7 +34,7 @@ def test_row_identity_contracts_date_warning_and_counterparty_is_only_metadata()
 def test_ambiguous_candidates_no_selected_entity_and_collision_keeps_source():
     registry = registry_from_frame(pd.DataFrame({
         'supplier_name': ['Input interiör AB', 'Input interiör Göteborg AB'],
-        'organization_number': ['1', '2']}))
+        'organization_number': [org(1), org(2)]}))
     data = pd.DataFrame({'header_text': ['Input interiör Slutk 1'],
                          'supplier_match_status': ['Originalvärde']})
     result = analyze_suppliers(data, registry)

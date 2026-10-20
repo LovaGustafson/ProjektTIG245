@@ -2,7 +2,8 @@
 import pandas as pd
 import yaml
 
-from src.ingestion.contract_reader import organization_key
+from src.ingestion.contract_reader import (USABLE_ORGANIZATION_NUMBER_STATUSES,
+                                          classify_organization_number)
 from src.supplier_matching.analysis import SupplierAnalysis
 from src.supplier_matching.extraction import extract_supplier
 from src.supplier_matching.normalization import normalize_supplier
@@ -33,8 +34,14 @@ def validate_classification_rules(rules):
             raise ValueError('View rules support organization_number or supplier_name, never counterparty')
         if rule['classification'] not in ('INTERNAL', 'NOT_RELEVANT', 'EXTERNAL'):
             raise ValueError('Invalid supplier view classification')
-        normalize = organization_key if rule['match_field'] == 'organization_number' else normalize_supplier
-        key = normalize(rule['value'])
+        if rule['match_field'] == 'organization_number':
+            # Same technical check as registry grouping; only usable keys can ever match.
+            key, status = classify_organization_number(rule['value'])
+            if status not in USABLE_ORGANIZATION_NUMBER_STATUSES:
+                raise ValueError(f'Supplier view rule {rule["id"]} needs a technically usable '
+                                 f'Swedish organization number ({status})')
+        else:
+            key = normalize_supplier(rule['value'])
         if not key:
             raise ValueError('Supplier view rule must have a usable exact comparison key')
         validated.append({**rule, 'comparison_key': key})

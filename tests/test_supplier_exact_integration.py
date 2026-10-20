@@ -15,12 +15,13 @@ from src.supplier_matching.matcher import SupplierMatcher
 from src.ui_supplier_matches import simple_match_rows, candidate_summary
 from src.ui_support import analyze_upload, select_sample_method
 from tests.test_feature_package import invoices, settings, workbook
+from tests.synthetic_org import org
 
 
 def register_frame(start='2026-01-01', end='2026-12-31'):
     return pd.DataFrame({
         'supplier_name': ['Bonliva AB', 'Bonliva Care AB', 'Bonliva Sverige AB'],
-        'organization_number': ['101', '202', '303'],
+        'organization_number': [org(101), org(202), org(303)],
         'contract_id': ['selected', 'alternative-current', 'alternative-expired'],
         'start_date': [start, '2026-01-01', '2024-01-01'],
         'end_date': [end, '2026-12-31', '2025-12-31'],
@@ -47,11 +48,11 @@ def test_only_selected_identity_is_period_checked(start, end, expected):
     before_source, before_registry = source.copy(deep=True), frame.copy(deep=True)
     analysis = analyze_suppliers(source, registry_from_frame(frame))
     assert analysis.rows.supplier_match_status.eq('STRONG_MATCH').all()
-    assert analysis.rows.matched_organization_number.eq('101').all()
+    assert analysis.rows.matched_organization_number.eq(org(101)).all()
     assert analysis.rows.candidate_count.eq(3).all()
     assert analysis.rows.contract_count.eq(1).all()
-    selected = analysis.contracts.loc[analysis.contracts.organization_number.eq('101')]
-    alternatives = analysis.contracts.loc[~analysis.contracts.organization_number.eq('101')]
+    selected = analysis.contracts.loc[analysis.contracts.organization_number.eq(org(101))]
+    alternatives = analysis.contracts.loc[~analysis.contracts.organization_number.eq(org(101))]
     assert selected.contract_period_status.eq(expected).all()
     assert selected.supplier_match_status.eq('STRONG_MATCH').all()
     assert alternatives.contract_period_status.eq('NOT_CHECKED').all()
@@ -68,15 +69,15 @@ def test_only_selected_identity_is_period_checked(start, end, expected):
 
 def test_selected_identity_without_contract_rows_never_borrows_an_alternative_contract():
     registry = registry_from_frame(register_frame())
-    registry.suppliers = tuple(replace(s, contracts=()) if s.organization_number == '101' else s
+    registry.suppliers = tuple(replace(s, contracts=()) if s.organization_number == org(101) else s
                                for s in registry.suppliers)
     analysis = analyze_suppliers(source_rows(), registry)
-    assert analysis.rows.matched_organization_number.eq('101').all()
+    assert analysis.rows.matched_organization_number.eq(org(101)).all()
     assert analysis.rows.contract_count.eq(0).all()
     assert analysis.rows.supplier_match_status.eq('STRONG_MATCH').all()
     assert len(analysis.contracts) == 4
     assert analysis.contracts.contract_period_status.eq('NOT_CHECKED').all()
-    assert not analysis.contracts.organization_number.eq('101').any()
+    assert not analysis.contracts.organization_number.eq(org(101)).any()
 
 
 def test_analysis_uses_explicit_selected_key_instead_of_first_candidate():
@@ -85,9 +86,9 @@ def test_analysis_uses_explicit_selected_key_instead_of_first_candidate():
     reordered = replace(result, candidates=tuple(reversed(result.candidates)))
     with patch.object(SupplierMatcher, 'match', return_value=reordered):
         analysis = analyze_suppliers(source_rows(), registry)
-    assert analysis.rows.matched_organization_number.eq('101').all()
-    assert analysis.contracts.loc[analysis.contracts.organization_number.eq('101')].contract_period_status.eq('PASS').all()
-    assert analysis.contracts.loc[~analysis.contracts.organization_number.eq('101')].contract_period_status.eq('NOT_CHECKED').all()
+    assert analysis.rows.matched_organization_number.eq(org(101)).all()
+    assert analysis.contracts.loc[analysis.contracts.organization_number.eq(org(101))].contract_period_status.eq('PASS').all()
+    assert analysis.contracts.loc[~analysis.contracts.organization_number.eq(org(101))].contract_period_status.eq('NOT_CHECKED').all()
 
 
 def test_all_contracts_of_selected_alias_identity_keep_their_own_dates():
@@ -100,10 +101,10 @@ def test_all_contracts_of_selected_alias_identity_keep_their_own_dates():
     analysis = analyze_suppliers(source_rows(), registry_from_frame(pd.concat([frame, aliases])))
     assert analysis.rows.contract_count.eq(2).all()
     assert analysis.rows.candidate_count.eq(3).all()
-    selected = analysis.contracts.loc[analysis.contracts.organization_number.eq('101')]
+    selected = analysis.contracts.loc[analysis.contracts.organization_number.eq(org(101))]
     assert selected.contract_period_status.tolist() == ['PASS', 'FLAGGED'] * 2
     assert len(analysis.contracts) == 8
-    assert analysis.contracts.loc[~analysis.contracts.organization_number.eq('101')].contract_period_status.eq('NOT_CHECKED').all()
+    assert analysis.contracts.loc[~analysis.contracts.organization_number.eq(org(101))].contract_period_status.eq('NOT_CHECKED').all()
 
 
 @pytest.mark.parametrize('collision', ['exact-identity', 'missing-exact-identity', 'strong-fuzzy'])
@@ -129,9 +130,9 @@ def review(tmp_path):
     path = settings(tmp_path)
     config = yaml.safe_load(path.read_text(encoding='utf-8'))
     # Confirmed identities below exist only in this synthetic fixture.
-    rules = [dict(id=f'synthetic-{org}', match_field='organization_number', value=org,
+    rules = [dict(id=f'synthetic-{number}', match_field='organization_number', value=number,
                   classification=classification, reason='Syntetisk testregel', confirmed=True)
-             for org, classification in [('101', 'EXTERNAL'), ('202', 'INTERNAL')]]
+             for number, classification in [(org(101), 'EXTERNAL'), (org(202), 'INTERNAL')]]
     config['sampling_supplier_rules'] = config['supplier_view_rules'] = rules
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding='utf-8')
     source = invoices(22)
@@ -144,8 +145,8 @@ def review(tmp_path):
 
 def assert_candidate_contracts(contracts, position=19):
     contracts = contracts.loc[contracts.source_row_position.eq(position)]
-    selected = contracts.loc[contracts.organization_number.eq('101')]
-    alternatives = contracts.loc[~contracts.organization_number.eq('101')]
+    selected = contracts.loc[contracts.organization_number.eq(org(101))]
+    alternatives = contracts.loc[~contracts.organization_number.eq(org(101))]
     assert len(selected) == 1 and len(alternatives) == 2
     assert selected.contract_period_status.eq('PASS').all()
     assert selected.supplier_match_status.eq('STRONG_MATCH').all()
@@ -164,7 +165,7 @@ def test_selected_and_alternative_labels_follow_identity_even_in_partial_reorder
         for candidate in displayed.to_dict('records'):
             row = shown.loc[candidate['supplier_name']]
             assert row.score == candidate['score']
-            if candidate['organization_number'] == '101':
+            if candidate['organization_number'] == org(101):
                 assert row.match_result == 'Stark namnmatchning'
                 assert 'exakt namnmatchning har valts' in row.explanation
             else:
@@ -214,7 +215,7 @@ def test_saved_sampling_and_every_excel_export_preserve_selected_identity_and_sc
             assert result.supplier_analysis is review.result.supplier_analysis
             assert_candidate_contracts(result.supplier_analysis.contracts)
             classified = plan.classification_rows.set_index('source_row_position')
-            assert classified.loc[19, 'supplier_key'] == 'org:101'
+            assert classified.loc[19, 'supplier_key'] == f'org:{org(101)}'
             assert classified.loc[19, 'classification'] == 'EXTERNAL'
             assert classified.loc[0, 'classification'] == 'INTERNAL'
             assert plan.classification_counts['INTERNAL'] <= len(plan.sample) // 20
@@ -236,7 +237,7 @@ def test_saved_sampling_and_every_excel_export_preserve_selected_identity_and_sc
                 if filename in ('samlad_kontrollfil.xlsx', 'cleaned_data.xlsx'):
                     assert_candidate_contracts(sheets['Möjliga avtal'])
                     matched = sheets['Leverantörsmatchning'].set_index('source_row_position').loc[19]
-                    assert matched.matched_organization_number == '101' and matched.candidate_count == 3
+                    assert matched.matched_organization_number == org(101) and matched.candidate_count == 3
                 if filename == 'manual_sample.xlsx':
                     assert sheets['Källspårning'].source_row_position.tolist() == [
                         p for verification in plan.sample for p in verification.rows.index]
@@ -255,7 +256,7 @@ def test_new_analysis_does_not_rewrite_saved_selection_or_lazy_export(review):
     assert row.supplier_match_status == 'AMBIGUOUS_MATCH'
     assert pd.isna(row.matched_organization_number)
     assert review.result.sampling_result is saved_plan
-    assert saved_plan.identity_rows.set_index('source_row_position').loc[19, 'supplier_key'] == 'org:101'
+    assert saved_plan.identity_rows.set_index('source_row_position').loc[19, 'supplier_key'] == f'org:{org(101)}'
     assert fresh.result.sampling_result.identity_rows.set_index('source_row_position').loc[19, 'supplier_key'] == 'name:bonliva ab'
     exported = pd.read_excel(BytesIO(review.downloads['samlad_kontrollfil.xlsx']), sheet_name=None, dtype=object)
     assert_candidate_contracts(exported['Möjliga avtal'])

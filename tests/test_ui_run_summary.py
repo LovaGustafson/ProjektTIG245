@@ -13,6 +13,7 @@ from src.pipeline import run_pipeline
 from src.ui_run_summary import dashboard_tables
 from src.ui_support import analyze_upload
 from tests.test_feature_package import invoices, registry, workbook
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
@@ -62,7 +63,7 @@ def test_supplier_statuses_and_contract_comparison_units_are_preserved():
     contracts = pd.concat([
         registry(), registry().assign(**{'Avtals-ID': 'second', 'Slutdatum': '2026-02-01'}),
         pd.DataFrame({'Leverantör': ['Input interiör AB', 'Input interiör Göteborg AB'],
-                      'Organisationsnummer': ['2', '3']}),
+                      'Organisationsnummer': [org(2), org(3)]}),
     ], ignore_index=True)
     review = analyze_upload(workbook(data), registry_content=workbook(contracts), registry_mode='uploaded')
     result = review.result

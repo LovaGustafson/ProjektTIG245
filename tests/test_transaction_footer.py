@@ -8,6 +8,7 @@ from src.filtering.transaction_rows import non_transaction_reason
 from src.ui_support import analyze_upload, validation_table
 from src.supplier_matching.settings import load_matching_settings
 from src.ingestion.contract_reader import registry_from_frame
+from tests.synthetic_org import org
 
 
 def footer():
@@ -23,7 +24,7 @@ def test_footer_is_excluded_from_review_validation_and_supplier_analysis():
     aliases = {v: k for k, v in COLUMN_ALIASES.items()}
     source, registry = BytesIO(), BytesIO()
     data.rename(columns=aliases).to_excel(source, index=False)
-    pd.DataFrame({'Leverantör': ['Test AB'], 'Organisationsnummer': ['123']}).to_excel(registry, index=False)
+    pd.DataFrame({'Leverantör': ['Test AB'], 'Organisationsnummer': [org(123)]}).to_excel(registry, index=False)
     result = analyze_upload(source.getvalue(), registry_content=registry.getvalue()).result
     assert result.filtering.cleaned_data.index.tolist() == [0, 2]
     assert result.supplier_analysis.rows.source_row_position.tolist() == [0, 2]
@@ -43,7 +44,7 @@ def test_partial_footer_signals_do_not_hide_invalid_amount():
 
 
 def test_swedish_contract_name_alias_preserves_name_and_detects_collision():
-    data = pd.DataFrame({'Leverantör': ['Test AB'], 'Organisationsnummer': ['123'],
+    data = pd.DataFrame({'Leverantör': ['Test AB'], 'Organisationsnummer': [org(123)],
         'Namn': ['Testavtal'], 'AvtalsID': ['A'], 'Startdatum': ['2026-01-01'], 'Slutdatum': ['2027-01-01']})
     settings = load_matching_settings()
     registry = registry_from_frame(data, columns=settings['registry_columns'])

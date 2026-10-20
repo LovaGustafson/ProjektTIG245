@@ -16,6 +16,7 @@ from tests.test_feature_package import settings, workbook
 from tests.test_priority2 import units
 from tests.test_random_sampling import ids
 from tests.test_ui_sampling import APP, population
+from tests.synthetic_org import org as synthetic_org
 
 
 def rule(name, classification='INTERNAL', **overrides):
@@ -108,7 +109,7 @@ def test_mixed_verification_classes_use_existing_single_identity(classes, expect
     # Same confirmed registry identity, two different source names in one verification.
     analysis = SimpleNamespace(registry=SimpleNamespace(available=True), rows=pd.DataFrame({
         'source_row_position': [3, 999], 'supplier_match_status': ['STRONG_MATCH'] * 2,
-        'matched_organization_number': ['synthetic-org'] * 2}))
+        'matched_organization_number': [synthetic_org(1)] * 2}))
     rules = [rule(name, status) for name, status in zip(['Alias A', 'Alias B'], classes) if status]
     result = (plan_manual_sample(source, interval=1, supplier_analysis=analysis, classification_rules=rules)
               if method == 'systematic' else plan_random_sample(source, seed=123, supplier_analysis=analysis, classification_rules=rules))
@@ -126,11 +127,11 @@ def test_rules_are_exact_confirmed_and_organization_requires_strong_match():
     source = units(['Internal AB', 'Internal AB Region', 'Unconfirmed', 'Org A', 'Org B'])
     analysis = SimpleNamespace(registry=SimpleNamespace(available=True), rows=pd.DataFrame({
         'source_row_position': [12, 15], 'supplier_match_status': ['STRONG_MATCH', 'AMBIGUOUS_MATCH'],
-        'matched_organization_number': ['123', '123']}))
+        'matched_organization_number': [synthetic_org(123), synthetic_org(123)]}))
     unconfirmed = rule('Unconfirmed')
     unconfirmed['confirmed'] = False
     org = rule('org', 'EXTERNAL')
-    org.update(match_field='organization_number', value='123')
+    org.update(match_field='organization_number', value=synthetic_org(123))
     result = plan_manual_sample(source, interval=1, supplier_analysis=analysis,
                                 classification_rules=[rule(' INTERNAL Aktiebolag. '), unconfirmed, org])
     assert result.decisions.supplier_classification.tolist() == ['INTERNAL', 'UNCLASSIFIED', 'UNCLASSIFIED', 'EXTERNAL', 'UNCLASSIFIED']

@@ -17,6 +17,7 @@ from src.ui_overview_details import (
 from src.ui_run_summary import dashboard_tables
 from src.ui_support import analyze_upload
 from tests.test_feature_package import invoices, registry, workbook
+from tests.synthetic_org import org
 
 
 @pytest.fixture(scope='module')
@@ -34,7 +35,7 @@ def review():
     contracts = pd.concat([
         registry(), registry().assign(**{'Avtals-ID': 'ended', 'Slutdatum': '2026-02-01'}),
         pd.DataFrame({'Leverantör': ['Input interiör AB', 'Input interiör Göteborg AB'],
-                      'Organisationsnummer': ['2', '3']}),
+                      'Organisationsnummer': [org(2), org(3)]}),
     ], ignore_index=True)
     return analyze_upload(workbook(data), registry_mode='uploaded', registry_content=workbook(contracts))
 
@@ -86,7 +87,7 @@ def candidate_analysis():
     }, index=[42, 7, 105, 8])
     registry = registry_from_frame(pd.DataFrame({
         'supplier_name': ['Securitas Sverige Aktiebolag', 'Securitas Technology Sverige AB', 'Alpha AB'],
-        'organization_number': ['001', '002', '003'],
+        'organization_number': [org(1), org(2), org(3)],
         'start_date': ['2026-01-01'] * 3, 'end_date': ['2026-12-31'] * 3,
     }))
     return source, analyze_suppliers(source, registry)
@@ -123,8 +124,8 @@ def test_candidate_comparisons_link_by_source_position_and_keep_all_backend_evid
     assert exact.score == 1 and exact.strong_eligible
     assert exact.supplier_match_status == 'STRONG_MATCH'
     contracts = analysis.contracts.loc[analysis.contracts.source_row_position.eq(42)]
-    assert contracts.loc[contracts.organization_number.eq('001'), 'contract_period_status'].eq('PASS').all()
-    assert contracts.loc[contracts.organization_number.eq('002'), 'contract_period_status'].eq('NOT_CHECKED').all()
+    assert contracts.loc[contracts.organization_number.eq(org(1)), 'contract_period_status'].eq('PASS').all()
+    assert contracts.loc[contracts.organization_number.eq(org(2)), 'contract_period_status'].eq('NOT_CHECKED').all()
     for field in ('rows', 'candidates', 'contracts'):
         pd.testing.assert_frame_equal(getattr(analysis, field), getattr(before, field))
     pd.testing.assert_frame_equal(source, before_source)

@@ -12,6 +12,7 @@ from streamlit.testing.v1 import AppTest
 from src.sampling.manual_sample import plan_random_sample
 from src.ui_support import analyze_upload, select_sample_method, DeferredDownloads
 from tests.test_feature_package import invoices, workbook
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
@@ -225,13 +226,13 @@ def test_random_uses_existing_strong_aliases_and_is_independent_of_other_results
     data.Huvudtext = ['Alfa AB Prelb 1', 'Alfa Namn AB Prelb 1', 'Beta AB Prelb 1',
                      ' BETA Aktiebolag. Prelb 1', 'Gamma AB Prelb 1', None]
     register = pd.DataFrame({'Leverantör': ['Alfa AB', 'Alfa Namn AB', 'Beta AB'],
-                             'Organisationsnummer': ['1', '1', '2']})
+                             'Organisationsnummer': [org(1), org(1), org(2)]})
     review = analyze_upload(workbook(data), registry_mode='uploaded',
                             registry_content=workbook(register), defer_downloads=True)
     first = select_sample_method(review, 'randomized')
     assert len(sample_ids(first)) == 3
     selected = first.result.sampling_result.decisions.query("decision == 'SELECTED'")
-    assert set(selected.supplier_key) == {'org:1', 'org:2', 'name:gamma ab'}
+    assert set(selected.supplier_key) == {f'org:{org(1)}', f'org:{org(2)}', 'name:gamma ab'}
     # Neither flags nor view classifications enter the selection interface.
     changed = replace(review, result=replace(review.result,
         detection_results=[replace(d, checks=(CheckResult(d.verification_id, 'synthetic',
