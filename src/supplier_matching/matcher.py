@@ -4,7 +4,8 @@ from difflib import SequenceMatcher
 
 from src.models.supplier import SupplierCandidate, SupplierMatch, SupplierMatchStatus as Status
 from src.supplier_matching.name_structure import (adjacent_swap, analyze_name_structure,
-                                                  distinctive_names_related, one_character_edit)
+                                                  distinctive_names_related, one_character_edit,
+                                                  structured_names_match)
 from src.supplier_matching.normalization import normalize_supplier, split_legal_form
 from src.supplier_matching.settings import MatchSettings
 
@@ -34,9 +35,10 @@ def select_strong_candidate(candidates: tuple[SupplierCandidate, ...]) -> Suppli
         return candidates[0]
     exact = [c for c in candidates if c.method == 'exact_normalized']
     # Usable identities retain their strongest eligible alias; unknown rows stay separate.
-    # A strong competing name blocks even when its identity cannot itself be selected.
+    # Legacy strong competing names block even with unusable identities. Decision A
+    # preserves exact priority over evidence introduced only by structured matching.
     if (len(exact) == 1 and exact[0].strong_eligible
-            and not any(c.name_strong for c in candidates
+            and not any(c.name_strong and c.method != 'structured_name' for c in candidates
                         if c.supplier.key != exact[0].supplier.key)):
         return exact[0]
     return None
@@ -53,6 +55,36 @@ class SupplierMatcher:
         self.names = [(supplier, name, normalize_supplier(name))
                       for supplier in suppliers for name in supplier.names]
         self._cache = {}
+
+    def _structured_candidate(self, query, supplier, name, normalized, evaluated, *,
+                              structural, inspect_competitors, exact_present, query_structure):
+        """Supplement legacy evidence without weakening its exact-priority blockers."""
+        if evaluated is not None and evaluated[0].name_strong:
+            return evaluated
+        config = self.settings
+        if structural and not exact_present:
+            safe = bool(supplier.organization_number)
+            reason = ('Exakt samma särskiljande namnled; endast godkända geografiska '
+                      'namnled eller utelämnad bolagsform skiljer. Juridisk identitet är inte verifierad.')
+            method = 'structured_name'
+        elif evaluated is not None:
+            return evaluated
+        elif inspect_competitors and distinctive_names_related(
+                query_structure, analyze_name_structure(normalized, config.geographic_descriptors),
+                config.fuzzy_candidate_threshold):
+            safe = False
+            reason = 'Möjlig strukturell namnkonkurrent; kräver manuell granskning.'
+            method = 'structural_alternative'
+        else:
+            return None
+        if not supplier.organization_number:
+            reason += (' Organisationsnummer saknas i registret.'
+                       if supplier.organization_number_status in (None, 'MISSING') else
+                       ' Organisationsnumret i registret är inte ett tekniskt giltigt organisationsnummer.')
+        score = (evaluated[0].score if evaluated is not None else
+                 round(SequenceMatcher(None, query, normalized, autojunk=False).ratio(), 6))
+        return SupplierCandidate(supplier, name, method, score, reason, safe,
+                                 method == 'structured_name'), True
 
     def _candidate(self, query, supplier, name, normalized):
         config = self.settings
@@ -124,10 +156,22 @@ class SupplierMatcher:
                                  'none', None, 'Leverantör kunde inte identifieras från underlaget.')
         if query not in self._cache:
             candidates, relevant_keys = {}, set()
-            priority = {'exact_normalized': 4, 'prefix': 3, 'fuzzy': 2,
-                        'uncertain_prefix': 1, 'related_name': 0}
-            for supplier, name, normalized in self.names:
+            priority = {'exact_normalized': 5, 'prefix': 4, 'fuzzy': 3, 'structured_name': 2,
+                        'uncertain_prefix': 1, 'related_name': 0, 'structural_alternative': -1}
+            query_structure = analyze_name_structure(query, self.settings.geographic_descriptors)
+            structural = [query != normalized and structured_names_match(
+                query_structure, analyze_name_structure(normalized, self.settings.geographic_descriptors),
+                self.settings.geographic_descriptors) for _, _, normalized in self.names]
+            exact_present = any(query == normalized for _, _, normalized in self.names)
+            # Inspect low-score plausible competitors only when structured matching
+            # is in play. A shared first word alone never supplies strong evidence.
+            inspect_competitors = any(structural)
+            for (supplier, name, normalized), structure_match in zip(self.names, structural):
                 evaluated = self._candidate(query, supplier, name, normalized)
+                evaluated = self._structured_candidate(
+                    query, supplier, name, normalized, evaluated, structural=structure_match,
+                    inspect_competitors=inspect_competitors, exact_present=exact_present,
+                    query_structure=query_structure)
                 if evaluated is None:
                     continue
                 candidate, relevant = evaluated
@@ -135,7 +179,10 @@ class SupplierMatcher:
                     # An identity is relevant if any of its aliases is.
                     relevant_keys.add(supplier.key)
                 previous = candidates.get(supplier.key)
-                rank = lambda c: (c.strong_eligible, priority[c.method], c.score)
+                # Preserve legacy alias priority, including every legacy blocker.
+                # New structural aliases use a stable tie-break, independent of row order.
+                rank = lambda c: (c.strong_eligible, priority[c.method], c.score,
+                                  c.matched_name if c.method in ('structured_name', 'structural_alternative') else '')
                 if previous is None or rank(candidate) > rank(previous):
                     candidates[supplier.key] = candidate
             ranked = tuple(sorted(candidates.values(),
@@ -156,6 +203,12 @@ class SupplierMatcher:
             if len(candidates) > 1:
                 reason += (f' En entydig exakt namnmatchning har valts; {len(candidates) - 1} '
                            'svagare alternativa kandidater bevaras för granskning och har inte valts.')
+                if any(c.supplier.key != selected.supplier.key and structured_names_match(
+                        analyze_name_structure(query, self.settings.geographic_descriptors),
+                        analyze_name_structure(normalize_supplier(c.matched_name), self.settings.geographic_descriptors),
+                        self.settings.geographic_descriptors) for c in candidates):
+                    reason += (' Ett strukturellt liknande namn kan avse en annan juridisk identitet; '
+                               'exakt namnprioritet har bevarats.')
             return SupplierMatch(supplier_text, query, Status.STRONG_MATCH, selected.method, selected.score,
                 reason, candidates, selected_supplier_key=selected.supplier.key)
         reason = 'Flera eller osäkra namnmatchningar – kontrollera manuellt. '

@@ -148,7 +148,8 @@ def test_detail_labels_explain_register_origin_without_changing_evidence(supplie
     ('Alphabolaget Sverige AB', 'Alphabolaget Svergie AB', org(1), 'fuzzy', 'STRONG_MATCH', 'mycket lika och har samma antal ord'),
     ('Securitas Sverige AB', 'Securitas Stockholm Sverige AB', org(1), 'related_name', 'AMBIGUOUS_MATCH', 'skiljer sig orden'),
     ('AJ Medical HB', 'AJ Medical KB', org(1), 'fuzzy', 'AMBIGUOUS_MATCH', 'Olika bolagsformer: HB / KB.'),
-    ('Alpha AB', 'Alpha', org(1), 'related_name', 'AMBIGUOUS_MATCH', 'Bolagsformen i namnen kan inte bekräftas som samma.'),
+    # Phase 3D.2 approves sole-identity legal omission; presentation uses its recorded explanation.
+    ('Alpha AB', 'Alpha', org(1), 'structured_name', 'STRONG_MATCH', 'utelämnad bolagsform'),
     ('Alpha AB', 'Alpha AB Sverige', org(1), 'uncertain_prefix', 'AMBIGUOUS_MATCH', 'Bolagsformen följs av ytterligare text'),
 ])
 def test_simplified_explanations_follow_actual_backend_results(query, name, organization, method, status, text):
