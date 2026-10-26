@@ -3,21 +3,10 @@ from collections import Counter
 from difflib import SequenceMatcher
 
 from src.models.supplier import SupplierCandidate, SupplierMatch, SupplierMatchStatus as Status
+from src.supplier_matching.name_structure import (adjacent_swap, analyze_name_structure,
+                                                  distinctive_names_related, one_character_edit)
 from src.supplier_matching.normalization import normalize_supplier, split_legal_form
 from src.supplier_matching.settings import MatchSettings
-
-
-def _one_character_edit(left, right):
-    """One insertion, deletion or substitution; transpositions are checked separately."""
-    if abs(len(left) - len(right)) > 1:
-        return False
-    if len(left) > len(right):
-        left, right = right, left
-    for index, (a, b) in enumerate(zip(left, right)):
-        if a != b:
-            return (left[index + 1:] == right[index + 1:] if len(left) == len(right)
-                    else left[index:] == right[index + 1:])
-    return len(right) == len(left) + 1
 
 
 def _fuzzy_tokens_compatible(words, other_words):
@@ -31,16 +20,31 @@ def _fuzzy_tokens_compatible(words, other_words):
     a, b = unmatched_left[0], unmatched_right[0]
     if min(len(a), len(b)) < 6:
         return False
-    if len(a) == len(b):
-        differences = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
-        if len(differences) == 2:
-            i, j = differences
-            if j == i + 1 and a[i] == b[j] and a[j] == b[i]:
-                # A single adjacent swap (e.g. Sverige/Svergie) is one typo,
-                # even when SequenceMatcher's token ratio falls below 0.90.
-                return True
-    return (_one_character_edit(a, b)
+    if adjacent_swap(a, b):
+        # A single adjacent swap (e.g. Sverige/Svergie) is one typo,
+        # even when SequenceMatcher's token ratio falls below 0.90.
+        return True
+    return (one_character_edit(a, b)
             and SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.90)
+
+
+def select_strong_candidate(candidates: tuple[SupplierCandidate, ...]) -> SupplierCandidate | None:
+    """Select an eligible identity; competing strong names block exact priority."""
+    if len(candidates) == 1 and candidates[0].strong_eligible:
+        return candidates[0]
+    exact = [c for c in candidates if c.method == 'exact_normalized']
+    # Usable identities retain their strongest eligible alias; unknown rows stay separate.
+    # A strong competing name blocks even when its identity cannot itself be selected.
+    if (len(exact) == 1 and exact[0].strong_eligible
+            and not any(c.name_strong for c in candidates
+                        if c.supplier.key != exact[0].supplier.key)):
+        return exact[0]
+    return None
+
+
+def _selected_key(candidates):
+    selected = select_strong_candidate(candidates)
+    return selected.supplier.key if selected is not None else None
 
 
 class SupplierMatcher:
@@ -63,6 +67,7 @@ class SupplierMatcher:
         prefix = normalized.startswith(query)
         if query == normalized:
             method, score, safe = 'exact_normalized', 1.0, True
+            relevant = True
             reason = 'Exakt normaliserat namn.'
         elif prefix:
             score = len(query) / len(normalized)
@@ -71,6 +76,7 @@ class SupplierMatcher:
                     and score >= config.prefix_min_coverage and same_first
                     and query_form is None)
             method = 'prefix' if safe else 'uncertain_prefix'
+            relevant = True
             reason = 'Namnet är ett prefix av registernamnet.'
             if not safe:
                 reason += ' Prefixet uppfyller inte säkerhetskraven.'
@@ -86,6 +92,15 @@ class SupplierMatcher:
             if safe and not _fuzzy_tokens_compatible(words, other_words):
                 safe = False
                 reason = 'Leverantörsnamnen är delvis lika, men särskiljande namnled skiljer sig åt.'
+            # Phase 3D.1: a candidate reached only through full-name similarity is
+            # relevant only if its distinctive name is plausibly related; shared
+            # legal/geographic words alone are not enough. Strong name evidence is
+            # always relevant. Relevance never changes the method, score or strength.
+            relevant = (safe or related or query_core == name_core
+                        or distinctive_names_related(
+                            analyze_name_structure(query, config.geographic_descriptors),
+                            analyze_name_structure(normalized, config.geographic_descriptors),
+                            config.fuzzy_candidate_threshold))
         else:
             return None
         if conflict:
@@ -93,10 +108,14 @@ class SupplierMatcher:
             reason += f' Olika bolagsformer: {query_form.upper()} / {name_form.upper()}.'
         elif explicit_form_uncertain:
             reason += ' Bolagsformen kan inte bekräftas.'
+        name_safe = safe
         if not supplier.organization_number:
             safe = False
-            reason += ' Organisationsnummer saknas i registret.'
-        return SupplierCandidate(supplier, name, method, round(score, 6), reason, safe)
+            if supplier.organization_number_status in (None, 'MISSING'):
+                reason += ' Organisationsnummer saknas i registret.'
+            else:
+                reason += ' Organisationsnumret i registret är inte ett tekniskt giltigt organisationsnummer.'
+        return SupplierCandidate(supplier, name, method, round(score, 6), reason, safe, name_safe), relevant
 
     def match(self, supplier_text):
         query = normalize_supplier(supplier_text)
@@ -104,35 +123,34 @@ class SupplierMatcher:
             return SupplierMatch(supplier_text, query, Status.SUPPLIER_NOT_IDENTIFIED,
                                  'none', None, 'Leverantör kunde inte identifieras från underlaget.')
         if query not in self._cache:
-            candidates = {}
+            candidates, relevant_keys = {}, set()
             priority = {'exact_normalized': 4, 'prefix': 3, 'fuzzy': 2,
                         'uncertain_prefix': 1, 'related_name': 0}
             for supplier, name, normalized in self.names:
-                candidate = self._candidate(query, supplier, name, normalized)
-                if candidate is None:
+                evaluated = self._candidate(query, supplier, name, normalized)
+                if evaluated is None:
                     continue
+                candidate, relevant = evaluated
+                if relevant:
+                    # An identity is relevant if any of its aliases is.
+                    relevant_keys.add(supplier.key)
                 previous = candidates.get(supplier.key)
                 rank = lambda c: (c.strong_eligible, priority[c.method], c.score)
                 if previous is None or rank(candidate) > rank(previous):
                     candidates[supplier.key] = candidate
-            self._cache[query] = tuple(sorted(candidates.values(),
+            ranked = tuple(sorted(candidates.values(),
                 key=lambda c: (-priority[c.method], -c.score, c.supplier.key)))
+            relevant = tuple(c for c in ranked if c.supplier.key in relevant_keys)
+            # Phase 3D.1 may only remove unrelated evidence, never change the decision:
+            # if dropping unrelated identities would alter the selection, keep them all.
+            self._cache[query] = (relevant if _selected_key(relevant) == _selected_key(ranked)
+                                  else ranked)
         candidates = self._cache[query]
         if not candidates:
             return SupplierMatch(supplier_text, query, Status.NO_MATCH, 'none', None,
                 'Ingen leverantörsmatch hittades i aktuell Koncerninköpslista.')
         best = candidates[0]
-        selected = None
-        if len(candidates) == 1 and best.strong_eligible:
-            selected = best
-        else:
-            exact = [c for c in candidates if c.method == 'exact_normalized']
-            # Representatives already preserve any strong-eligible alias per identity.
-            # Numberless exact records are separate identities and also block priority.
-            if (len(exact) == 1 and exact[0].strong_eligible
-                    and not any(c.strong_eligible for c in candidates
-                                if c.supplier.key != exact[0].supplier.key)):
-                selected = exact[0]
+        selected = select_strong_candidate(candidates)
         if selected is not None:
             reason = 'Stark namnmatchning i avtalsregistret. ' + selected.reason
             if len(candidates) > 1:

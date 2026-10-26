@@ -9,6 +9,7 @@ from streamlit.testing.v1 import AppTest
 from src.presentation import context_fields
 from src.supplier_matching.extraction import FINAL_BOOKING
 from src.ui_support import analyze_upload, display_dataframe, review_row_detail
+from tests.synthetic_org import org
 
 
 def workbook(data):
@@ -33,7 +34,7 @@ def review(request):
         'Huvudtext': HEADERS + ['Apoteket AB Slutk 987'] * 18,
     })
     registry = workbook(pd.DataFrame({'Leverantör': ['Apoteket AB'],
-                                      'Organisationsnummer': ['123']}))
+                                      'Organisationsnummer': [org(123)]}))
     content = workbook(data)
     upload = analyze_upload(content, registry_mode='disabled' if request.param == 'disabled' else 'uploaded',
                             registry_content=registry if request.param == 'available' else

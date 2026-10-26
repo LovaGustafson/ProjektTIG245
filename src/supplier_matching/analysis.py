@@ -8,7 +8,7 @@ from src.ingestion.contract_reader import CONTRACT_FIELDS
 from src.models.supplier import ContractRegistry, SupplierMatchStatus as Status
 from src.supplier_matching.date_warning import registry_date_check
 from src.supplier_matching.extraction import extract_supplier, normalize_header_text
-from src.supplier_matching.matcher import SupplierMatcher
+from src.supplier_matching.matcher import SupplierMatcher, select_strong_candidate
 from src.supplier_matching.contract_period import check_contract_period, ContractPeriodResult
 
 LOGGER = logging.getLogger(__name__)
@@ -54,7 +54,14 @@ def analyze_suppliers(data, registry, *, settings=None, date_format=None, matche
         def value(field):
             return row[field] if list(data.columns).count(field) == 1 else None
         result = engine.match(extract_supplier(value('header_text')))
+        # Candidate flags come from the matcher; independently verify its selection.
+        expected = select_strong_candidate(result.candidates)
+        expected_key = expected.supplier.key if expected is not None else None
         strong = result.status == Status.STRONG_MATCH
+        if strong != (expected is not None) or result.selected_supplier_key != expected_key:
+            raise ValueError(
+                f'Inkonsekvent leverantörsval vid källradposition {position}: '
+                'matchstatus eller selected_supplier_key avviker från kandidatvalet.')
         chosen = next((c for c in result.candidates
                        if c.supplier.key == result.selected_supplier_key), None) if strong else None
         warning, date_status, date_message = registry_date_check(

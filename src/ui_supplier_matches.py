@@ -50,6 +50,11 @@ def readable_reason(reason, method):
         ('Bolagsformen kan inte bekräftas.', 'Bolagsformen i namnen kan inte bekräftas som samma.'),
         ('Organisationsnummer saknas i registret.',
          'Organisationsnummer saknas i avtalsregistret, vilket hindrar en stark namnmatchning.'),
+        # The recorded clause never contains the register value; keep it that way here.
+        ('Organisationsnumret i registret är inte ett tekniskt giltigt organisationsnummer.',
+         'Organisationsnumret i avtalsregistret är inte ett giltigt svenskt organisationsnummer, '
+         'vilket hindrar en stark namnmatchning. Numret kan vara felskrivet, ofullständigt '
+         'eller ha ett annat format.'),
     ]:
         reason = reason.replace(old, new)
     return reason

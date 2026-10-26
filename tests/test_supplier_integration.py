@@ -11,6 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from src.pipeline import run_pipeline
 from src.ui_support import analyze_upload
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -41,7 +42,7 @@ def contracts():
     return pd.DataFrame({
         'Leverantör': ['Telia Sverige AB', 'Telia Sverige AB', 'Input interiör AB',
                       'Input interiör Göteborg AB'],
-        'Organisationsnummer': ['012345-6789', '0123456789', '2', '3'],
+        'Organisationsnummer': [f'{org(123)[:6]}-{org(123)[6:]}', org(123), org(2), org(3)],
         'Avtals-ID': ['001', '002', '003', '004'],
         'Avtalsnamn': ['=SUM(1,2)', 'Avtal två', 'Avtal tre', 'Avtal fyra'],
         'Startdatum': ['2025-01-01'] * 4, 'Slutdatum': ['2027-12-31'] * 4,
@@ -63,7 +64,7 @@ def test_complete_pipeline_preserves_both_original_files_and_filters_before_matc
         'STRONG_MATCH', 'SUPPLIER_NOT_IDENTIFIED']
     assert analysis.summary()['Rader med datumvarning'] == 2
     assert analysis.rows['contract_count'].tolist() == [2, 0, 0, 0, 2, 0]
-    assert analysis.rows['matched_organization_number'].iloc[0] == '0123456789'
+    assert analysis.rows['matched_organization_number'].iloc[0] == org(123)
     assert all('FBFM' not in verification.rows['verification_type'].tolist()
                for verification in result.verifications)
     for path, content, mtime in originals:
@@ -84,7 +85,7 @@ def test_export_has_clean_header_matching_candidates_all_contracts_and_literal_f
         assert review.result.original_data['Huvudtext'].iloc[0] == invoices()['Huvudtext'].iloc[0]
         assert kept['Motp'].tolist() == [100] * 6
         assert kept['supplier_match_status'].iloc[0] == 'STRONG_MATCH'
-        assert kept['matched_organization_number'].iloc[0] == '0123456789'
+        assert kept['matched_organization_number'].iloc[0] == org(123)
         candidates = pd.read_excel(book, sheet_name='Leverantörskandidater')
         assert len(candidates[candidates.source_row_position == 1]) == 2
         possible = pd.read_excel(book, sheet_name='Möjliga avtal', dtype=object)

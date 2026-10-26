@@ -16,6 +16,7 @@ from src.ui_overview_details import verification_details
 from src.ui_support import analyze_upload, DeferredDownloads
 from tests.test_feature_package import invoices, registry, workbook, settings
 from tests.test_ui_overview_details import overview_app, expander, evidence_table
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
@@ -74,7 +75,7 @@ def test_deferred_export_is_identical_and_serializes_only_requested_file(mode, f
     data.loc[6, 'Verdatum'] = '2027-01-01'
     contracts = pd.concat([registry(), pd.DataFrame({
         'Leverantör': ['Input interiör AB', 'Input interiör Göteborg AB'],
-        'Organisationsnummer': ['2', '3']})], ignore_index=True)
+        'Organisationsnummer': [org(2), org(3)]})], ignore_index=True)
     options = dict(registry_content=None if mode == 'unavailable' else workbook(contracts),
                    registry_mode='disabled' if mode == 'unavailable' else 'uploaded',
                    excluded_verification_types=['X', 'FBFM'] if mode == 'all_excluded' else ['FBFM'])

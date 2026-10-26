@@ -107,6 +107,10 @@ supplier_matching:
   prefix_min_characters: 8
   prefix_min_tokens: 2
   prefix_min_coverage: 0.60
+  # Phase 3D.1: generic geographic words, ignored only when judging whether a
+  # fuzzy-only candidate is relevant. Never the first word, never used for strength,
+  # identity, grouping or sampling. Further words require explicit confirmation.
+  geographic_descriptors: ["Sverige"]
   related_first_token_min_characters: 6
   registry_sheet: 0
   csv_delimiter: ";"

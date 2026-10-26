@@ -13,6 +13,7 @@ from src.filtering.filter_engine import DEFAULT_SETTINGS_PATH, filter_rows
 from src.ingestion.registry_source import resolve_registry_source, load_contract_source
 from src.supplier_matching.extraction import extract_supplier, normalize_header_text
 from src.ui_support import analyze_upload
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
@@ -32,7 +33,7 @@ def invoices(count=1):
 
 
 def registry(name='Syntetisk Leverantör AB'):
-    return pd.DataFrame({'Leverantör': [name], 'Organisationsnummer': ['123'],
+    return pd.DataFrame({'Leverantör': [name], 'Organisationsnummer': [org(123)],
                          'Avtals-ID': ['Avtal-001'], 'Startdatum': ['2026-01-01'],
                          'Slutdatum': ['2026-12-31']})
 
@@ -123,7 +124,7 @@ def test_uncertain_export_has_all_non_strong_occurrences_and_no_excluded_rows():
                          'Okänd Testverksamhet AB Slutk3', 'Utan markör', 'mall', None]
     contracts = pd.concat([registry(),
         pd.DataFrame({'Leverantör': ['Input interiör AB', 'Input interiör Göteborg AB'],
-                       'Organisationsnummer': ['2', '3']})], ignore_index=True)
+                       'Organisationsnummer': [org(2), org(3)]})], ignore_index=True)
     review = analyze_upload(workbook(data), registry_content=workbook(contracts),
                              registry_name='synthetic-register.xlsx')
     with pd.ExcelFile(BytesIO(review.downloads['uncertain_suppliers.xlsx'])) as book:

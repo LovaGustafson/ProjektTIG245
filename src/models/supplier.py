@@ -19,6 +19,7 @@ class Supplier:
     names: tuple[str, ...]
     organization_number: str | None
     contracts: tuple[dict, ...]
+    organization_number_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class SupplierCandidate:
     score: float
     reason: str
     strong_eligible: bool
+    name_strong: bool
 
 
 @dataclass(frozen=True)

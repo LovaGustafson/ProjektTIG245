@@ -10,6 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from src.models.result import CheckResult, CheckStatus
 from src.ui_support import analyze_upload
+from tests.synthetic_org import org
 
 APP = Path(__file__).resolve().parents[1] / 'streamlit_app.py'
 
@@ -28,7 +29,7 @@ def start():
         'Huvudtext': ['Alpha AB Prelb 0', 'Alpha AB Prelb 1', 'Nordmöbler Slutk 2',
                      'Obekant Testbolag AB Prelb 3', 'Original utan markör']})
     registry = workbook({'Leverantör': ['Alpha AB', 'Nordmöbler AB', 'Nordmöbler Göteborg AB'],
-        'Organisationsnummer': ['1', '2', '3'], 'Namn': ['Avtal A', 'Avtal B', 'Avtal C'],
+        'Organisationsnummer': [org(1), org(2), org(3)], 'Namn': ['Avtal A', 'Avtal B', 'Avtal C'],
         'AvtalsID': ['a', 'b', 'c'], 'Startdatum': ['2026-01-01'] * 3, 'Slutdatum': ['2027-01-01'] * 3})
     review = analyze_upload(source, registry_content=registry)
     detection = review.result.detection_results[0]

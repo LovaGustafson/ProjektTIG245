@@ -12,6 +12,7 @@ from src.sampling.manual_sample import plan_manual_sample
 from src.supplier_matching.view_scope import load_view_rules, classify_supplier_view, visible_supplier_analysis
 from src.ui_support import analyze_upload
 from tests.test_feature_package import invoices, registry, workbook, settings
+from tests.synthetic_org import org
 
 
 def units(names):
@@ -80,7 +81,7 @@ def test_strong_aliases_share_organization_key_and_matching_is_unchanged(tmp_pat
     data.Huvudtext = ['Alfa AB Prelb 1', 'Beta AB Prelb 1', 'Alfa AB Prelb 1',
                      'Beta Namn AB Prelb 1', 'Gamma AB Prelb 1', 'Delta AB Prelb 1']
     register = pd.DataFrame({'Leverantör': ['Alfa AB', 'Beta AB', 'Beta Namn AB', 'Gamma AB', 'Delta AB'],
-                             'Organisationsnummer': ['1', '2', '2', '3', '4']})
+                             'Organisationsnummer': [org(1), org(2), org(2), org(3), org(4)]})
     path = settings(tmp_path)
     config = yaml.safe_load(path.read_text())
     config['manual_sample_interval'] = 2
@@ -90,7 +91,7 @@ def test_strong_aliases_share_organization_key_and_matching_is_unchanged(tmp_pat
     before = deepcopy(result.supplier_analysis)
     assert [v.verification_id for v in result.manual_sample] == ['2', '5', '6']
     assert result.sampling_result.decisions.loc[3, 'decision'] == 'DUPLICATE_SUPPLIER'
-    assert result.sampling_result.identity_rows.loc[3, 'supplier_key'] == 'org:2'
+    assert result.sampling_result.identity_rows.loc[3, 'supplier_key'] == f'org:{org(2)}'
     assert result.supplier_analysis.rows.supplier_match_status.tolist() == ['STRONG_MATCH'] * 6
     assert result.sampling_evidence.population_position.tolist() == [2, 5, 6]
     report = pd.read_excel(BytesIO(upload.downloads['manual_sample.xlsx']), sheet_name=None)
@@ -179,12 +180,12 @@ def test_confirmed_organization_view_rule_preserves_accuracy_and_inspectable_row
     from src.ui_run_summary import dashboard_tables
     data = invoices(3)
     data.loc[2, 'Huvudtext'] = 'Separat Leverantör AB Prelb 1'
-    register = pd.concat([registry(), registry('Separat Leverantör AB').assign(Organisationsnummer='456')])
+    register = pd.concat([registry(), registry('Separat Leverantör AB').assign(Organisationsnummer=org(456))])
     content, reference = workbook(data), workbook(register)
     path = settings(tmp_path)
     write_rules(path, [], interval=1)
     before = analyze_upload(content, registry_mode='uploaded', registry_content=reference, settings_path=path)
-    write_rules(path, [{**rule(), 'match_field': 'organization_number', 'value': '1-23'}], interval=1)
+    write_rules(path, [{**rule(), 'match_field': 'organization_number', 'value': f'{org(123)[:6]}-{org(123)[6:]}'}], interval=1)
     upload = analyze_upload(content, registry_mode='uploaded', registry_content=reference, settings_path=path)
     result = upload.result
     assert result.supplier_view.excluded_from_view.tolist() == [True, True, False]
@@ -227,9 +228,9 @@ def test_confirmed_organization_view_rule_preserves_accuracy_and_inspectable_row
 def test_organization_rule_does_not_use_ambiguous_candidates(tmp_path):
     data = invoices(1).assign(Huvudtext='Input interiör Prelb 1')
     register = pd.DataFrame({'Leverantör': ['Input interiör AB', 'Input interiör Göteborg AB'],
-                             'Organisationsnummer': ['123', '456']})
+                             'Organisationsnummer': [org(123), org(456)]})
     path = settings(tmp_path)
-    write_rules(path, [{**rule(), 'match_field': 'organization_number', 'value': '123'}], interval=1)
+    write_rules(path, [{**rule(), 'match_field': 'organization_number', 'value': org(123)}], interval=1)
     result = analyze_upload(workbook(data), registry_content=workbook(register),
                             registry_mode='uploaded', settings_path=path).result
     assert result.supplier_analysis.rows.supplier_match_status.tolist() == ['AMBIGUOUS_MATCH']

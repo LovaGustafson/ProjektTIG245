@@ -10,13 +10,14 @@ from src.ingestion.contract_reader import registry_from_frame
 from src.supplier_matching.analysis import analyze_suppliers
 from src.ui_supplier_panel import supplier_review_table
 from src.ui_supplier_matches import MATCH_LABELS
+from tests.synthetic_org import org
 
 
 @pytest.fixture
 def supplier_review():
     registry = registry_from_frame(pd.DataFrame({
         'supplier_name': ['Alpha AB', 'Nordmöbler AB', 'Nordmöbler Göteborg AB', 'AJ Medical KB'],
-        'organization_number': ['1', '2', '3', '4'],
+        'organization_number': [org(1), org(2), org(3), org(4)],
     }))
     # Repeated business identifiers must not link evidence across source occurrences.
     source = pd.DataFrame({
@@ -128,7 +129,7 @@ def test_detail_labels_explain_register_origin_without_changing_evidence(supplie
     expected = analysis.rows.loc[analysis.rows.source_row_position.eq(position)]
     pd.testing.assert_frame_equal(details.value, expected)
     if position == 2:
-        assert details.value.matched_organization_number.iloc[0] == '1'
+        assert details.value.matched_organization_number.iloc[0] == org(1)
         assert any(c.value.startswith('En stark namnmatchning har identifierats i avtalsregistret.') for c in app.caption)
     else:
         assert len(simple) == 2
@@ -140,15 +141,15 @@ def test_detail_labels_explain_register_origin_without_changing_evidence(supplie
 
 
 @pytest.mark.parametrize('query, name, organization, method, status, text', [
-    ('Alpha AB', 'Alpha Aktiebolag', '1', 'exact_normalized', 'STRONG_MATCH', 'överensstämmer efter standardisering'),
+    ('Alpha AB', 'Alpha Aktiebolag', org(1), 'exact_normalized', 'STRONG_MATCH', 'överensstämmer efter standardisering'),
     ('Alpha AB', 'Alpha AB', None, 'exact_normalized', 'AMBIGUOUS_MATCH', 'Organisationsnummer saknas i avtalsregistret'),
-    ('Input interiör', 'Input interiör AB', '1', 'prefix', 'STRONG_MATCH', 'gemensam början'),
-    ('Input', 'Input interiör AB', '1', 'uncertain_prefix', 'AMBIGUOUS_MATCH', 'räcker inte för en stark namnmatchning'),
-    ('Alphabolaget Sverige AB', 'Alphabolaget Svergie AB', '1', 'fuzzy', 'STRONG_MATCH', 'mycket lika och har samma antal ord'),
-    ('Securitas Sverige AB', 'Securitas Stockholm Sverige AB', '1', 'related_name', 'AMBIGUOUS_MATCH', 'skiljer sig orden'),
-    ('AJ Medical HB', 'AJ Medical KB', '1', 'fuzzy', 'AMBIGUOUS_MATCH', 'Olika bolagsformer: HB / KB.'),
-    ('Alpha AB', 'Alpha', '1', 'related_name', 'AMBIGUOUS_MATCH', 'Bolagsformen i namnen kan inte bekräftas som samma.'),
-    ('Alpha AB', 'Alpha AB Sverige', '1', 'uncertain_prefix', 'AMBIGUOUS_MATCH', 'Bolagsformen följs av ytterligare text'),
+    ('Input interiör', 'Input interiör AB', org(1), 'prefix', 'STRONG_MATCH', 'gemensam början'),
+    ('Input', 'Input interiör AB', org(1), 'uncertain_prefix', 'AMBIGUOUS_MATCH', 'räcker inte för en stark namnmatchning'),
+    ('Alphabolaget Sverige AB', 'Alphabolaget Svergie AB', org(1), 'fuzzy', 'STRONG_MATCH', 'mycket lika och har samma antal ord'),
+    ('Securitas Sverige AB', 'Securitas Stockholm Sverige AB', org(1), 'related_name', 'AMBIGUOUS_MATCH', 'skiljer sig orden'),
+    ('AJ Medical HB', 'AJ Medical KB', org(1), 'fuzzy', 'AMBIGUOUS_MATCH', 'Olika bolagsformer: HB / KB.'),
+    ('Alpha AB', 'Alpha', org(1), 'related_name', 'AMBIGUOUS_MATCH', 'Bolagsformen i namnen kan inte bekräftas som samma.'),
+    ('Alpha AB', 'Alpha AB Sverige', org(1), 'uncertain_prefix', 'AMBIGUOUS_MATCH', 'Bolagsformen följs av ytterligare text'),
 ])
 def test_simplified_explanations_follow_actual_backend_results(query, name, organization, method, status, text):
     from src.ui_supplier_matches import simple_match_rows, candidate_summary

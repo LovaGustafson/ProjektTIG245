@@ -11,6 +11,7 @@ from src.supplier_matching.contract_period import (
     ACTIVE, ENDED, NOT_STARTED, UNVERIFIABLE, ContractDatePolicy, check_contract_period,
 )
 from src.ui_support import analyze_upload
+from tests.synthetic_org import org
 
 
 @pytest.mark.parametrize('transaction, start, end, status, label', [
@@ -81,7 +82,7 @@ def test_ambiguous_identity_never_gets_an_active_contract_conclusion():
 
 def test_multiple_contracts_keep_distinct_periods_and_do_not_change_supplier_confidence():
     registry = registry_from_frame(pd.DataFrame({
-        'supplier_name': ['Syntetisk Leverantör AB'] * 3, 'organization_number': ['123'] * 3,
+        'supplier_name': ['Syntetisk Leverantör AB'] * 3, 'organization_number': [org(123)] * 3,
         'contract_id': ['past', 'current', 'future'],
         'start_date': ['2024-01-01', '2026-01-01', '2028-01-01'],
         'end_date': ['2025-12-31', '2027-12-31', '2029-12-31']}))
@@ -107,7 +108,7 @@ def test_period_evidence_export_original_dates_and_summary():
         'Verdatum': ['2025-06-15', '2026-06-15', '2027-06-15'],
         'Konto': ['4000'] * 3, 'Vertyp': ['X'] * 3, 'Utfall': [1] * 3,
         'Huvudtext': ['Syntetisk Leverantör AB Slutk1'] * 3})
-    register = pd.DataFrame({'Leverantör': ['Syntetisk Leverantör AB'], 'Organisationsnummer': ['123'],
+    register = pd.DataFrame({'Leverantör': ['Syntetisk Leverantör AB'], 'Organisationsnummer': [org(123)],
         'Avtals-ID': ['Avtal-001'], 'Startdatum': ['2026-01-01'],
         'Slutdatum': ['2026-12-31'], 'Sista slutdatum': ['2026-12-31']})
     review = analyze_upload(workbook(source), registry_content=workbook(register), registry_name='synthetic.xlsx')
