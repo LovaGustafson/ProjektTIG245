@@ -301,6 +301,69 @@ Phase 3D.1 separates the structure of supplier names to judge whether a candidat
 
 **Consequences on reanalysis.** Rows whose candidates were all unrelated move from `AMBIGUOUS_MATCH` to `NO_MATCH`; they remain in the exported non-strong rows. Unrelated alternatives of an exact match disappear from candidate and contract evidence (they were never assessed). No row becomes `STRONG_MATCH` and no selected identity changes, so contract assessment, sampling keys and organization classification are unaffected. Saved analyses and exports are not rematched. The existing expectation "ATEA Sverige AB" vs "Telia Sverige AB" changed deliberately from `AMBIGUOUS_MATCH` to `NO_MATCH`. Phase 3D.1 authorizes no new strong-match rule; distinctive-name promotion (for example a missing geographic word or legal form) is deferred to Phase 3D.2 and [Q15](docs/requirements/OPEN_QUESTIONS.md#q15--supplier-name-structure-policy-phase-3d).
 
+## Safe structured supplier matching (Phase 3D.2)
+
+The Phase 3D.2 implementation request confirms a limited extension within M6/S4/C3,
+with exact-priority decision A and safe-prefix decision B. This section extends
+the earlier phase contracts above; it does not change their historical scope.
+
+**New name evidence.** `structured_names_match` compares normalized copies using
+the existing name structure. Nonempty distinctive token sequences must be exactly
+equal, in order and including multiplicity and diacritics; a legal designation
+alone cannot supply distinctive evidence. Only exact configured
+geographic descriptors may differ; the approved vocabulary remains `Sverige`.
+Either side may omit a trailing legal form; explicit forms on both sides must
+agree after existing equivalent-form normalization. Explicit AB/HB/KB conflicts,
+extra distinctive words, spelling edits and diacritic folding do not supply new
+strong evidence. Descriptor typo/truncation recognition remains useful for
+relevance but cannot independently justify a new structural promotion. Existing
+safe prefixes (including truncated distinctive components) and the legacy fuzzy
+guard remain supported; this phase does not remove their established eligibility.
+
+**Discovery and competition.** When at least one nonidentical alias satisfies the
+structured comparison, the matcher also discovers plausible distinctive-name
+alternatives below the old full-name score threshold, using the existing symmetric
+relevance relation. Such `structural_alternative` candidates cannot be selected;
+they can block a nonexact selection. No shared-first-word test alone supplies
+strong evidence. `structured_name` candidates require a usable register identity,
+and are selectable only as the sole candidate identity under the centralized
+`select_strong_candidate`. Missing/invalid-number competitors remain separate
+identities and can still block. Aliases sharing a valid organization number are
+one identity with every contract occurrence retained. New structural alias ties
+are resolved deterministically; legacy strong aliases outrank new evidence.
+
+**Exact priority (decision A).** If any exact-normalized alias exists, structural
+promotion is suppressed and all existing name-strength/blocking evidence is
+preserved. Newly discovered alternatives remain visible with their contracts.
+The selection function also excludes structural-only strength from exact-priority
+blocking. Thus `Bonliva AB` can still select the exact identity despite a different
+identity named `Bonliva Sverige AB`; existing exact collisions and strong legacy
+prefix/fuzzy competitors still block, including competitors with unusable numbers.
+The existing row-reason field records the potential different-legal-identity
+conflict when a returned representative is structurally equivalent. No dedicated
+conflict status, counter or UI workflow is introduced. Absence of that diagnostic
+is not proof of absence of conflicting register aliases (Q15).
+
+**Preservation and consequences.** Phase 3D.1's decision-preserving relevance
+filter and Phase 3C's selected-key consistency check still use the same selection
+function. Relevance removal alone cannot create a strong decision. No global
+threshold, source value, register grouping, invoice-side organization number,
+output column or saved analysis is changed. Existing score formulas are retained:
+a newly discovered pair reports the normalized full-name SequenceMatcher score;
+an upgraded existing candidate retains its prior score, including prefix coverage.
+These scores are not legal-identity probabilities. A structurally justified strong
+match can therefore have a score below the fuzzy thresholds.
+
+On reanalysis, approved descriptor/legal-form omissions can move `NO_MATCH` or
+`AMBIGUOUS_MATCH` to `STRONG_MATCH`; additional plausible identities can instead
+retain or introduce ambiguity. Only selected suppliers' contract periods may be
+assessed. Organization sampling keys, uniqueness, classification, quotas and
+uncertain-export membership can consequently change. Sampling algorithms,
+contract applicability/compliance limits, export schemas, source provenance and
+saved analyses/export snapshots retain their existing contracts. Name matching
+does not verify legal identity, even with one technically usable register identity.
+Q14's interim organization-number policy and Q12's date-policy questions remain.
+
 ## Register source selection
 
 `src/ingestion/registry_source.py` isolates source selection from identity matching. `supplier_matching.default_registry_path` selects a local default file (relative paths resolve against the project root); an optional `default_registry_name` controls its label. The configured path is `data/reference/koncerninkop.xlsx`. No real register is distributed in Git; the file must exist locally before default matching is available. UI uploads replace the default, removal disables register use, and restoring the default clears the uploaded selection. CLI supports `--supplier-register` and `--no-default-registry`.

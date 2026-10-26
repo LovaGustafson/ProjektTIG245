@@ -1,15 +1,15 @@
 """Deterministic supplier-name structure on normalized comparison copies.
 
 Separates the distinctive name from a trailing legal designation and from
-configured generic geographic descriptors. Used only to judge candidate
-relevance; it never groups suppliers, changes scores or establishes identity.
+configured generic geographic descriptors. Supports candidate relevance and
+conservative structured name evidence; it never establishes legal identity.
 Original names and normalize_supplier output are never altered.
 """
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import unicodedata
 
-from src.supplier_matching.normalization import split_legal_form
+from src.supplier_matching.normalization import LEGAL_FORMS, split_legal_form
 
 DESCRIPTOR_TRUNCATION_MIN_CHARACTERS = 4
 DESCRIPTOR_TYPO_MIN_CHARACTERS = 6
@@ -84,6 +84,20 @@ def analyze_name_structure(normalized: str, descriptors=()) -> NameStructure:
         else:
             distinctive.append(token)
     return NameStructure(normalized, legal_form, tokens, tuple(distinctive), tuple(generic))
+
+
+def structured_names_match(left: NameStructure, right: NameStructure, descriptors=()) -> bool:
+    """Exact distinctive words, allowing only approved descriptors and legal omission.
+
+    Relevance recognizes descriptor typos/truncations too, but those deliberately
+    cannot supply new strong evidence here. Existing fuzzy/prefix rules handle
+    their established cases independently. Explicit legal forms must agree.
+    """
+    return (bool(left.distinctive_tokens)
+            and left.distinctive not in LEGAL_FORMS
+            and left.distinctive_tokens == right.distinctive_tokens
+            and all(token in descriptors for token in left.descriptor_tokens + right.descriptor_tokens)
+            and not (left.legal_form and right.legal_form and left.legal_form != right.legal_form))
 
 
 def _without_diacritics(text):

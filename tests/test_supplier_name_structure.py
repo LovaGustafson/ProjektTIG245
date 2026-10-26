@@ -174,15 +174,15 @@ def test_existing_strong_descriptor_variations_are_unchanged(query, register, me
     assert result.status.value == 'STRONG_MATCH' and result.method == method
 
 
-@pytest.mark.parametrize('query, register, expected', [
-    ('Securitas Sverige AB', 'Securitas Sverige', 'AMBIGUOUS_MATCH'),
-    ('Nordviks Bygg Sverige AB', 'Nordviks Bygg AB', 'AMBIGUOUS_MATCH'),
-    ('Telia AB', 'Telia Sverige Aktiebolag', 'NO_MATCH'),
-    ('Atea Sverige AB', 'Atea Aktiebolaget', 'NO_MATCH'),
+@pytest.mark.parametrize('query, register', [
+    ('Securitas Sverige AB', 'Securitas Sverige'),
+    ('Nordviks Bygg Sverige AB', 'Nordviks Bygg AB'),
+    ('Telia AB', 'Telia Sverige Aktiebolag'),
+    ('Atea Sverige AB', 'Atea Aktiebolaget'),
 ])
-def test_descriptor_differences_are_not_yet_promoted(query, register, expected):
-    # Phase 3D.2 decides any strong-match policy for these; 3D.1 must not change them.
-    assert match(query, [(register, org(1))]).status.value == expected
+def test_approved_phase3d2_descriptor_and_legal_omissions(query, register):
+    # Phase 3D.2 explicitly approves these sole-identity structural promotions.
+    assert match(query, [(register, org(1))]).status.value == 'STRONG_MATCH'
 
 
 # --- D, I, J, K. Plausible spelling variants stay discoverable ---------------------
@@ -222,7 +222,8 @@ def test_additional_distinctive_words_stay_separate_reviewable_candidates(query,
 def test_distinctive_geographic_words_keep_candidates_related():
     assert names(match('Sverige Trafik AB', [('Sverige Transport AB', org(2))])) == ['Sverige Transport AB']
     result = match('Göteborg Energi AB', [('Göteborg Energi Sverige AB', org(1)), ('Stockholm Energi AB', org(2))])
-    assert result.status.value == 'AMBIGUOUS_MATCH'
+    # Only approved Sverige differs; Göteborg remains part of the exact distinctive name.
+    assert result.status.value == 'STRONG_MATCH'
     assert names(result) == ['Göteborg Energi Sverige AB']
 
 

@@ -223,17 +223,20 @@ Until resolved: keep the conservative interim behavior, do not treat a usable st
 
 Related requirements: M6, S4, C1–C3; W1 boundaries
 
-Status: Open. Phase 3D.1 (candidate relevance) is implemented; the strong-match policy is deferred to Phase 3D.2.
+Status: Partially resolved by the 2026-10-26 Phase 3D.2 implementation request.
 
 Phase 3D.1 authorizes no new strong-match rule. Candidate relevance filtering must not independently promote an ambiguous match to `STRONG_MATCH`: the decision is made on the complete candidate set, and unrelated candidates are removed only when that leaves the selected identity unchanged. A correction after independent review (2026-10-21) enforces this; the first Phase 3D.1 version could promote rows by removing a plausible competitor (for example "Alfa Bygg Sverige AB" with "Alfa Bygg Svergie AB" and "Alfa Byggservice Sverige AB"). Any broader promotion decision belongs to Phase 3D.2.
 
 Phase 3D.1 uses the configured descriptor `Sverige` (named by the stakeholder) only to decide whether a weak fuzzy candidate is relevant. It does not promote matches. See the [Phase 3D.1 section of PROJECT_SPEC.md](../../PROJECT_SPEC.md#supplier-name-structure-and-candidate-relevance-phase-3d1).
 
 - Which further words, if any, are generic geographic descriptors (for example Sweden, Svenska, Norden, cities or regions)? Cities can be distinctive ("Göteborg Energi" vs "Stockholm Energi").
-- Should equal distinctive names with a missing descriptor ("Telia AB" vs "Telia Sverige Aktiebolag") or a legal form on one side only ("Securitas Sverige AB" vs "Securitas Sverige") become `STRONG_MATCH`? A register name without a legal form may be another form, and a shared distinctive name does not prove the same legal entity (parent/subsidiary risk when the true entity is not in the register).
-- Should an exact name still be selected when a different valid identity has the same distinctive name ("X AB" vs "X Sverige AB" with different organization numbers)?
-- Should a one-character difference inside the distinctive name itself (for example "Lindqvist" vs "Lindqvista") remain eligible for `STRONG_MATCH` under the existing fuzzy guard?
+- Resolved for Phase 3D.2: equal distinctive token sequences may support strong name matching with approved descriptor/legal-form omissions, provided the register identity is usable and no competing identity prevents nonexact selection. This is name confidence only; omitted legal forms and absent true suppliers retain parent/subsidiary risks.
+- Resolved by decision A: preserve existing exact priority over newly introduced structural evidence, while retaining alternative identities/contracts and all legacy blockers. A row-reason diagnostic records structurally equivalent competing representatives. Which dedicated conflict indicators, alias-level diagnostics, counts or manual-review workflow are required remains open; no UI redesign is authorized in this phase.
+- Decision B preserves safe prefixes, including truncated distinctive words. The new structural mechanism requires exact distinctive components and cannot promote their spelling edits. Whether to tighten the existing fuzzy allowance for distinctive spelling edits (for example "Lindqvist" vs "Lindqvista") remains open; Phase 3D.2 preserves that legacy behavior and its blocking evidence.
 - Is it acceptable that removing unrelated candidates moves rows from `AMBIGUOUS_MATCH` to `NO_MATCH` (fewer manual-review items)? Whether a sole strong-named identity may be selected when its only competitors are unrelated is a Phase 3D.2 decision; until then such rows stay `AMBIGUOUS_MATCH`.
 - The stakeholder's statement that matching valid organization numbers should support `STRONG_MATCH` cannot be implemented: the verification list contains no supplier organization number. It would require an invoice-side organization-number column or an approved mapping table, with confirmed meaning.
 
-Until resolved: no distinctive-name promotion rule is implemented, and the descriptor list stays limited to `Sverige`.
+The descriptor list stays limited to `Sverige`. Structural-only promotion does not
+generalize the relevance relation's abbreviations, compounds, diacritic folding or
+descriptor typos into strong evidence. Existing fuzzy/prefix cases remain separate.
+See [Phase 3D.2](../../PROJECT_SPEC.md#safe-structured-supplier-matching-phase-3d2).

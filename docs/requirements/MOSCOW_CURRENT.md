@@ -1,10 +1,23 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-10-12
+Last updated: 2026-10-26
 
 This document contains the current customer requirements for the TIG245 prototype.
 
 These requirements must be treated as the current customer priority baseline.
+
+The 2026-10-26 Phase 3D.2 implementation request confirms a limited supplier-name
+extension within M6/S4/C3: exact distinctive components may support strong matching
+across omission of configured `Sverige` or a trailing legal form, with explicit
+legal conflicts and competing plausible nonexact identities kept conservative.
+Decision A preserves existing exact-name priority and legacy blocking evidence;
+new structural alternatives remain inspectable without automatically overriding
+the exact identity. Decision B preserves established safe prefix matching.
+The new structured mechanism cannot promote distinctive spelling edits; existing
+fuzzy safeguards remain in force. This does not verify legal identity, infer an
+invoice-side organization number, expand geographic vocabulary or establish
+contract compliance. See PROJECT_SPEC section 12 and OPEN_QUESTIONS Q15 for the
+technical contract and remaining conflict-diagnostic/identity limitations.
 
 Do not invent missing business rules.
 Where a requirement is ambiguous, implementation must be based on an explicitly documented rule or marked as requiring clarification.
