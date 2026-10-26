@@ -34,6 +34,12 @@ The feature-package request of 2026-09-24 confirms the following work within M2/
 
 These confirmations do not reopen duplicate removal or authorize autonomous controls, Proceedo integration or other Won't Have functionality.
 
+The final upload UI cleanup request removes the dedicated `Ta bort register` and
+`Återställ standardregister` buttons. Automatic configured-default loading and
+native upload/replacement remain; shared backend/CLI source-selection modes are
+unchanged. Swedish size/format guidance replaces the duplicated native uploader
+metadata visually, without changing accepted files or upload limits.
+
 The 2026-10-12 sampling/filter request confirms adding `LR91S` and `LR95S` to
 the existing default verification-type exclusions (M2/M4/M5/M6). Users can
 reinclude either through the existing filter UI. Excluded occurrences and all

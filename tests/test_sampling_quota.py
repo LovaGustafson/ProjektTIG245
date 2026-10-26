@@ -195,7 +195,6 @@ def test_ui_and_every_export_share_classifications_rules_snapshot_and_decisions(
             assert sheets['Urvalsklassificeringsregler'].id.tolist() == [r['id'] for r in rules]
         app = AppTest.from_file(str(APP), default_timeout=30)
         app.session_state['review'] = current
-        app.session_state['registry_enabled'] = False
         app.run()
         assert not app.exception
         manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')

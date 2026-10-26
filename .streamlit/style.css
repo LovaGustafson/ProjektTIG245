@@ -10,6 +10,15 @@
     --audit-shadow: 0 3px 12px rgb(23 43 66 / 4%);
 }
 
+/* Streamlit 1.63: this element contains only native size/type metadata.
+   Scope to our two upload panels; keep inputs, buttons, labels and drag feedback.
+   Swedish size captions and Excel guidance remain visible and accessible.
+   Internal test ID: recheck on Streamlit upgrades (no generated class names). */
+.st-key-invoice_upload_panel [data-testid="stFileUploaderDropzoneInstructions"],
+.st-key-registry_upload_panel [data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none;
+}
+
 /* Run overview: compact metrics with labels that wrap on laptop screens. */
 .st-key-overview_kpis [data-testid="stMetric"] {
     background: var(--audit-surface);
