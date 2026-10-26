@@ -55,7 +55,9 @@ def test_complete_pipeline_preserves_both_original_files_and_filters_before_matc
     source.write_bytes(workbook(invoices()))
     registry.write_bytes(workbook(contracts()))
     originals = [(p, p.read_bytes(), p.stat().st_mtime_ns) for p in (source, registry)]
-    result = run_pipeline(source, supplier_register=registry, output_dir=tmp_path / 'out')
+    # The synthetic register's extraction date is explicit, never a production default.
+    result = run_pipeline(source, supplier_register=registry, output_dir=tmp_path / 'out',
+                          registry_snapshot_date=date(2026, 8, 31))
     assert len(result.filtering.cleaned_data) == 6
     analysis = result.supplier_analysis
     assert analysis.rows['source_row_position'].tolist() == [0, 1, 2, 3, 5, 6]
@@ -98,7 +100,8 @@ def test_export_has_clean_header_matching_candidates_all_contracts_and_literal_f
 
 
 def test_snapshot_override_changes_warning_but_never_identity_status():
-    first = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()))
+    first = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()),
+                           registry_snapshot_date=date(2026, 8, 31))
     later = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()),
                            registry_snapshot_date=date(2026, 9, 2))
     a, b = first.result.supplier_analysis.rows, later.result.supplier_analysis.rows
@@ -139,6 +142,7 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     app = AppTest.from_file(str(APP), default_timeout=20).run()
     app.file_uploader[0].set_value(('invoices.xlsx', workbook(invoices()), MIME)).run()
     app.file_uploader[1].set_value(('registry.xlsx', registry_content, MIME)).run()
+    app.date_input[0].set_value(date(2026, 8, 31)).run()
     app.button[0].click().run()
     assert not app.exception
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('supplier_')] == ['6', '2', '1', '1', '2', '2']

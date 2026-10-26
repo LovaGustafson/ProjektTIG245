@@ -3,6 +3,7 @@ from dataclasses import replace
 from io import BytesIO
 import json
 from pathlib import Path
+from datetime import date
 
 import pandas as pd
 import pytest
@@ -31,7 +32,9 @@ def start():
     registry = workbook({'Leverantör': ['Alpha AB', 'Nordmöbler AB', 'Nordmöbler Göteborg AB'],
         'Organisationsnummer': [org(1), org(2), org(3)], 'Namn': ['Avtal A', 'Avtal B', 'Avtal C'],
         'AvtalsID': ['a', 'b', 'c'], 'Startdatum': ['2026-01-01'] * 3, 'Slutdatum': ['2027-01-01'] * 3})
-    review = analyze_upload(source, registry_content=registry)
+    # Navigation over freshness warnings needs a known synthetic extraction date.
+    review = analyze_upload(source, registry_content=registry,
+                            registry_snapshot_date=date(2026, 8, 31))
     detection = review.result.detection_results[0]
     review.result.detection_results[0] = replace(detection, checks=detection.checks + (
         CheckResult(detection.verification_id, 'synthetic', CheckStatus.FLAGGED, 'Testorsak'),))

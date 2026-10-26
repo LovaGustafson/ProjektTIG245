@@ -1,6 +1,7 @@
 """Local invoice review interface. Run with streamlit run streamlit_app.py."""
 from pathlib import Path
 from functools import partial
+from dataclasses import replace
 
 import streamlit as st
 import pandas as pd
@@ -20,10 +21,10 @@ from src.ui_supplier_panel import supplier_positions, SUPPLIER_VIEWS
 from src.ui_supplier_panel import show_supplier_scope
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_navigation import home, select_drilldown, active_drilldown
-from src.supplier_matching.settings import load_matching_settings, snapshot_date
+from src.supplier_matching.settings import load_matching_settings
 from src.ui_run_summary import show_run_summary
 from src.ui_overview_details import verification_details
-from src.ingestion.registry_source import default_registry_location
+from src.ingestion.registry_source import default_registry_location, resolve_registry_source, load_contract_source
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -458,6 +459,43 @@ def show_filters(review):
     return review
 
 
+def show_upload_registry(source, config):
+    """Show availability and a source-specific extraction date, using existing validation."""
+    if source.kind == 'disabled':
+        st.caption('Avtalsregister avaktiverat. Ingen leverantörsmatchning genomförs.')
+        return source
+    if source.content is None:
+        st.info('Ladda upp ett koncernavtalsregister för att genomföra leverantörsmatchning.')
+        return replace(source, snapshot_date=None)
+
+    identity = (source.kind, source.sha256)
+    # Per-session validation avoids reparsing the register on ordinary UI reruns.
+    validation_key = (identity, repr(config))
+    cached = st.session_state.get('upload_registry_validation')
+    if cached is None or cached[0] != validation_key:
+        cached = (validation_key, load_contract_source(source, config=config).available)
+        st.session_state['upload_registry_validation'] = cached
+    if not cached[1]:
+        st.warning('Koncernavtalsregistret kunde inte läsas. Ladda upp ett giltigt register för leverantörsmatchning.')
+        return replace(source, snapshot_date=None)
+
+    path, _ = default_registry_location(config)
+    filename = path.name if source.kind == 'default' and path is not None else source.name
+    st.text(f'Aktivt avtalsregister: {filename}')
+    dates = st.session_state.setdefault('upload_registry_dates', {})
+    known_date = dates.get(identity, source.snapshot_date if source.kind == 'default' else None)
+    registry_date = st.date_input('Registerutdragets datum', value=known_date,
+        key=f'registry_date_{source.kind}_{source.sha256}', on_change=clear_result,
+        help='Ange datumet då registret togs ut. Datumet används endast för att varna när '
+             'en transaktion är senare än registerutdraget, inte för att bedöma avtalsperioder.')
+    dates[identity] = registry_date
+    if registry_date is None:
+        st.caption('Ange registerutdragets datum om du känner till det. Utan datum kan registeråldern inte kontrolleras.')
+    # An explicit source preserves an unknown date instead of inheriting a default
+    # register's configured date when the user has uploaded a replacement.
+    return replace(source, snapshot_date=registry_date)
+
+
 def main():
     st.set_page_config(page_title='Fakturagranskning', layout='wide')
     st.html(Path(__file__).parent / '.streamlit' / 'style.css')
@@ -469,26 +507,20 @@ def main():
                 '<span>Originaldata förändras inte</span></div>')
     with st.sidebar:
         st.subheader('Ladda upp underlag')
-        st.caption('Excel (.xlsx), första kalkylbladet. Alla rader behandlas.')
-        upload = st.file_uploader('Välj Excel-fil', type=['xlsx'], on_change=clear_result)
+        st.caption('I detta verktyg används Excel-filer (.xlsx)')
+        upload = st.file_uploader('Här laddar du upp ditt fakturaunderlag', type=['xlsx'],
+            on_change=clear_result, help='Det första kalkylbladet läses. Alla rader behandlas.')
+        st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
         registry_config = load_matching_settings()
-        registry_upload = st.file_uploader('Byt koncerninköpsregister (valfritt)', type=['xlsx'],
+        registry_upload = st.file_uploader('Här laddar du upp koncernavtalsregister', type=['xlsx'],
             key=f'registry_upload_{st.session_state.get("registry_upload_version", 0)}',
             on_change=change_registry, args=(True,))
+        st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
         enabled = st.session_state.get('registry_enabled', True)
-        if not enabled:
-            st.caption('Avtalsregister avaktiverat. Ingen leverantörsmatchning genomförs.')
-        elif registry_upload:
-            st.text(f'Aktivt avtalsregister: {registry_upload.name} (eget register ersätter standardregistret)')
-        else:
-            default_path, label = default_registry_location(registry_config)
-            st.text(f'Förvalt avtalsregister: {label}')
-            if not default_path or not default_path.is_file():
-                st.info('Standardregisterfilen saknas. Ladda upp ett register för att genomföra leverantörsmatchning.')
-        registry_date = st.date_input('Registerutdragets datum',
-            value=snapshot_date(registry_config['registry_snapshot_date']) if registry_config.get('registry_snapshot_date') else None,
-            on_change=clear_result,
-            help='Används för att varna när transaktionen är senare än registerutdraget.')
+        selected_registry = resolve_registry_source(mode='default' if enabled else 'disabled',
+            uploaded_content=registry_upload.getvalue() if registry_upload else None,
+            uploaded_name=registry_upload.name if registry_upload else None)
+        selected_registry = show_upload_registry(selected_registry, registry_config)
         start = st.button('Starta analys', disabled=upload is None, type='primary')
         st.button('Ta bort register', on_click=change_registry, args=(False,), disabled=not enabled)
         st.button('Återställ standardregister', on_click=change_registry, args=(True, True))
@@ -498,7 +530,8 @@ def main():
             with st.spinner('Analyserar samtliga rader…'):
                 st.session_state['review'] = analyze_upload(upload.getvalue(),
                     registry_content=registry_upload.getvalue() if registry_upload else None,
-                    registry_snapshot_date=registry_date,
+                    registry_snapshot_date=selected_registry.snapshot_date,
+                    registry_source=selected_registry,
                     registry_mode='default' if enabled else 'disabled',
                     registry_name=registry_upload.name if registry_upload else None,
                     source_name=upload.name, defer_downloads=True)

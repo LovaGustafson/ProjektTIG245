@@ -100,7 +100,10 @@ supplier_matching:
   contract_period:
     end_date_field: null
     inclusive_boundaries: null
-  registry_snapshot_date: "2026-08-31"
+  # Set only a verified extraction date for the configured default register.
+  # Unknown dates use the existing UNKNOWN freshness state; uploaded replacements
+  # request their own date in the UI rather than inheriting this value.
+  registry_snapshot_date: null
   # Technical safeguards, pending evaluation against the actual register.
   fuzzy_strong_threshold: 0.94
   fuzzy_candidate_threshold: 0.82
