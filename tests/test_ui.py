@@ -61,7 +61,7 @@ def test_streamlit_initial_screen():
     assert not app.exception
     assert app.button[0].disabled
     assert app.title[0].value == 'Fakturagranskning'
-    assert app.file_uploader[0].label == 'Välj Excel-fil'
+    assert app.file_uploader[0].label == 'Här laddar du upp ditt fakturaunderlag'
     assert not app.metric
     assert not app.get('download_button')
 
