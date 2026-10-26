@@ -2,6 +2,7 @@
 
 All register identities, aliases and source occurrences below are synthetic.
 """
+from difflib import SequenceMatcher
 from itertools import permutations
 
 import pandas as pd
@@ -66,7 +67,9 @@ def test_conflicting_name_tokens_require_review_despite_high_score(source, candi
 
 
 @pytest.mark.parametrize('source, candidate, expected', [
-    ('ATEA Sverige AB', 'Telia Sverige AB', 'AMBIGUOUS_MATCH'),
+    # Phase 3D.1 (deliberate change, was AMBIGUOUS_MATCH): only "Sverige AB" is shared,
+    # so the high full-name score no longer makes Telia a relevant candidate.
+    ('ATEA Sverige AB', 'Telia Sverige AB', 'NO_MATCH'),
     ('ATEA AB', 'Telia AB', 'NO_MATCH'),
     ('Syntetisk Stockholm Service AB', 'Syntetisk Göteborg Service AB', 'AMBIGUOUS_MATCH'),
 ])
@@ -76,7 +79,10 @@ def test_existing_conservative_results_with_shared_tokens_remain(source, candida
     if result.candidates:
         assert all(not candidate.strong_eligible for candidate in result.candidates)
     if source == 'ATEA Sverige AB':
-        assert result.score == pytest.approx(0.903226, abs=1e-6)
+        # The unchanged full-name score is high; it no longer creates a candidate alone.
+        full_score = SequenceMatcher(None, normalize_supplier(source), normalize_supplier(candidate),
+                                     autojunk=False).ratio()
+        assert full_score == pytest.approx(0.903226, abs=1e-6)
 
 
 @pytest.mark.parametrize('source, candidate', [
