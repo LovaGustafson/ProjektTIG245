@@ -31,6 +31,7 @@ def config(monkeypatch):
 def app():
     result = AppTest.from_file(str(APP), default_timeout=20).run()
     assert not result.exception
+    assert not {'Ta bort register', 'Återställ standardregister'} & {b.label for b in result.button}
     return result
 
 
@@ -47,7 +48,7 @@ def test_missing_default_has_upload_instruction_without_filename_or_date(config,
     config['registry_snapshot_date'] = '2026-08-31'  # Must remain invisible without a register.
     review = app()
     assert [u.label for u in review.file_uploader] == [
-        'Här laddar du upp ditt fakturaunderlag', 'Här laddar du upp koncernavtalsregister']
+        'Här laddar du upp fakturaunderlaget', 'Här laddar du upp koncernavtalsregistret']
     assert all(list(u.proto.type) == ['.xlsx'] for u in review.file_uploader)
     assert all(not u.proto.multiple_files for u in review.file_uploader)
     assert not review.date_input
@@ -69,6 +70,29 @@ def test_swedish_size_caption_uses_actual_streamlit_limit(config, monkeypatch, l
     review = app()
     assert [c.value for c in review.caption].count(f'Max {limit} MB per fil') == 2
     assert all(u.proto.max_upload_size_mb == limit for u in review.file_uploader)
+
+
+def test_metadata_css_is_scoped_to_upload_panels_and_keeps_controls(config):
+    review = app()
+    css = (APP.parent / '.streamlit/style.css').read_text()
+    rule = '\n'.join([
+        '.st-key-invoice_upload_panel [data-testid="stFileUploaderDropzoneInstructions"],',
+        '.st-key-registry_upload_panel [data-testid="stFileUploaderDropzoneInstructions"] {',
+        '    display: none;',
+        '}',
+    ])
+    assert rule in css
+    assert any(rule in element.proto.body for element in review.get('html'))
+    for key in ('invoice_upload_panel', 'registry_upload_panel'):
+        panel = next(p for p in review.get('flex_container') if p.proto.id.endswith('-' + key))
+        assert len(panel.file_uploader) == 1
+        assert not panel.file_uploader[0].proto.disabled
+        assert [c.value for c in panel.caption] == ['Max 200 MB per fil']
+    # AppTest does not render CSS. Catch a renamed frontend hook on upgrades;
+    # interaction is covered by the upload/replacement tests below.
+    static = Path(st.__file__).parent / 'static'
+    assert any('stFileUploaderDropzoneInstructions' in p.read_text()
+               for p in static.rglob('FileUploader.*.js'))
 
 
 def test_invoice_upload_keeps_first_sheet_all_rows_and_original_data(config):
@@ -137,12 +161,45 @@ def test_known_default_date_is_preserved_but_not_inherited_by_replacement(config
     assert result.result.supplier_analysis.registry.snapshot_date is None
     assert result.result.supplier_analysis.rows.registry_date_check.tolist() == ['UNKNOWN']
     review.date_input[0].set_value(date(2026, 7, 1)).run()
-    next(b for b in review.button if b.label == 'Ta bort register').click().run()
-    assert not review.date_input
-    next(b for b in review.button if b.label == 'Återställ standardregister').click().run()
+    # Clearing the native upload uses normal default selection, without a restore button.
+    review.file_uploader[1].set_value(None).run()
     assert not review.exception
     assert review.file_uploader[1].value is None
     assert review.date_input[0].value == date(2026, 6, 2)
+
+
+def test_replacement_retains_each_date_and_old_button_state_cannot_disable_default(config, tmp_path):
+    first = workbook(registry())
+    second = workbook(registry('Annan Syntetisk Leverantör AB'))
+    path = tmp_path / 'standard.xlsx'
+    path.write_bytes(first)
+    config['default_registry_path'] = str(path)
+    review = AppTest.from_file(str(APP), default_timeout=20)
+    # A session left open across the UI upgrade must not use obsolete button state.
+    review.session_state['registry_enabled'] = False
+    review.session_state['registry_upload_version'] = 9
+    review.run()
+    assert not review.exception
+    assert [t.value for t in review.text] == ['Aktivt avtalsregister: standard.xlsx']
+    assert not {'Ta bort register', 'Återställ standardregister'} & {b.label for b in review.button}
+    review.file_uploader[0].set_value(('underlag.xlsx', workbook(invoices()), MIME)).run()
+    review.file_uploader[1].set_value(('ett.xlsx', first, MIME)).run()
+    review.date_input[0].set_value(date(2026, 6, 1)).run()
+    original = start(review)
+    review.file_uploader[1].set_value(('två.xlsx', second, MIME)).run()
+    assert 'review' not in review.session_state
+    assert [t.value for t in review.text] == ['Aktivt avtalsregister: två.xlsx']
+    assert review.date_input[0].value is None
+    review.date_input[0].set_value(date(2026, 7, 1)).run()
+    review.file_uploader[1].set_value(('ett.xlsx', first, MIME)).run()
+    assert review.date_input[0].value == date(2026, 6, 1)
+    review.file_uploader[1].set_value(('två.xlsx', second, MIME)).run()
+    assert review.date_input[0].value == date(2026, 7, 1)
+    replacement = start(review)
+    assert replacement.registry_content == second
+    assert replacement.registry_source.name == 'två.xlsx'
+    assert original.registry_content == first
+    assert original.registry_snapshot_date == date(2026, 6, 1)
 
 
 @pytest.mark.parametrize('content', [b'not excel', workbook(pd.DataFrame({'Fel kolumn': ['x']}))])

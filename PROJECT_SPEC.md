@@ -366,21 +366,26 @@ Q14's interim organization-number policy and Q12's date-policy questions remain.
 
 ## Register source selection
 
-`src/ingestion/registry_source.py` isolates source selection from identity matching. `supplier_matching.default_registry_path` selects a local default file (relative paths resolve against the project root); an optional `default_registry_name` controls its label. The configured path is `data/reference/koncerninkop.xlsx`. No real register is distributed in Git; the file must exist locally before default matching is available. UI uploads replace the default, removal disables register use, and restoring the default clears the uploaded selection. CLI supports `--supplier-register` and `--no-default-registry`.
+`src/ingestion/registry_source.py` isolates source selection from identity matching. `supplier_matching.default_registry_path` selects a local default file (relative paths resolve against the project root); an optional `default_registry_name` controls its label. The configured path is `data/reference/koncerninkop.xlsx`. No real register is distributed in Git; the file must exist locally before default matching is available. UI uploads replace the default. The final upload cleanup removes the dedicated remove/restore buttons and their enable/version state; the native uploader still supports replacement and clearing. Without an upload, normal configured-default selection applies. Missing defaults remain unavailable. CLI supports `--supplier-register` and `--no-default-registry`; shared source-selection modes remain unchanged.
 
 An immutable `RegistrySource` retains the exact bytes, source kind/name, snapshot date and SHA-256 for the run. UI refiltering reuses these bytes even if the local default file subsequently changes. Source/register changes clear stale results. Missing, disabled or unreadable sources remain unavailable; they do not trigger a substitute register or fabricated negative matches. Register date is explicit configuration/UI input, not inferred from filenames. Export metadata also records the parsed register sheet and header row when available.
 
-The upload UI labels the existing single-file invoice uploader `Här laddar du upp ditt
-fakturaunderlag` and the register uploader `Här laddar du upp koncernavtalsregister`.
+The upload UI labels the existing single-file invoice uploader `Här laddar du upp
+fakturaunderlaget` and the register uploader `Här laddar du upp koncernavtalsregistret`.
 The visible format guidance is `I detta verktyg används Excel-filer (.xlsx)`; the
 invoice help retains first-worksheet/all-row processing information. A Swedish
 `Max <configured server.maxUploadSize> MB per fil` caption accompanies each native
-uploader. Native widget text is not overridden through CSS or JavaScript.
+uploader. Streamlit 1.63 has no public option to hide its native size/type text.
+CSS scoped to the `invoice_upload_panel` and `registry_upload_panel` containers
+hides only `stFileUploaderDropzoneInstructions`, which in that version contains
+the size/type metadata. Labels, input controls, upload buttons and drag feedback
+remain intact; the Swedish format/size guidance remains accessible. This internal
+test ID needs checking on Streamlit upgrades. No JavaScript is injected.
 
 The UI uses existing register validation, cached per session and source/configuration,
 before displaying an active filename or extraction-date control. A missing default
 shows only an instruction to upload a register; an unusable register gets a readable
-replacement instruction. Disabled/unavailable registers have no date field. The
+replacement instruction. Unavailable registers have no date field. The
 unverified prototype snapshot date `2026-08-31` has been removed from configuration;
 the default is null. An explicitly configured known date applies to the default
 register only. Each uploaded replacement requests its own date, initially blank;

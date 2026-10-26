@@ -84,13 +84,6 @@ def change_sampling_method(regenerate=False):
     st.session_state.pop('sampling_notice', None)
 
 
-def change_registry(enabled, reset_upload=False):
-    st.session_state['registry_enabled'] = enabled
-    if reset_upload:
-        st.session_state['registry_upload_version'] = st.session_state.get('registry_upload_version', 0) + 1
-    clear_result()
-
-
 def show_overview(result, flagged, errors):
     st.subheader('Granskningsresultat och förklaringar')
     st.caption('En samlad bild av det analyserade underlaget.')
@@ -461,9 +454,6 @@ def show_filters(review):
 
 def show_upload_registry(source, config):
     """Show availability and a source-specific extraction date, using existing validation."""
-    if source.kind == 'disabled':
-        st.caption('Avtalsregister avaktiverat. Ingen leverantörsmatchning genomförs.')
-        return source
     if source.content is None:
         st.info('Ladda upp ett koncernavtalsregister för att genomföra leverantörsmatchning.')
         return replace(source, snapshot_date=None)
@@ -508,22 +498,20 @@ def main():
     with st.sidebar:
         st.subheader('Ladda upp underlag')
         st.caption('I detta verktyg används Excel-filer (.xlsx)')
-        upload = st.file_uploader('Här laddar du upp ditt fakturaunderlag', type=['xlsx'],
-            on_change=clear_result, help='Det första kalkylbladet läses. Alla rader behandlas.')
-        st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
+        with st.container(key='invoice_upload_panel'):
+            upload = st.file_uploader('Här laddar du upp fakturaunderlaget', type=['xlsx'],
+                on_change=clear_result, help='Det första kalkylbladet läses. Alla rader behandlas.')
+            st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
         registry_config = load_matching_settings()
-        registry_upload = st.file_uploader('Här laddar du upp koncernavtalsregister', type=['xlsx'],
-            key=f'registry_upload_{st.session_state.get("registry_upload_version", 0)}',
-            on_change=change_registry, args=(True,))
-        st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
-        enabled = st.session_state.get('registry_enabled', True)
-        selected_registry = resolve_registry_source(mode='default' if enabled else 'disabled',
+        with st.container(key='registry_upload_panel'):
+            registry_upload = st.file_uploader('Här laddar du upp koncernavtalsregistret', type=['xlsx'],
+                key='registry_upload', on_change=clear_result)
+            st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
+        selected_registry = resolve_registry_source(
             uploaded_content=registry_upload.getvalue() if registry_upload else None,
             uploaded_name=registry_upload.name if registry_upload else None)
         selected_registry = show_upload_registry(selected_registry, registry_config)
         start = st.button('Starta analys', disabled=upload is None, type='primary')
-        st.button('Ta bort register', on_click=change_registry, args=(False,), disabled=not enabled)
-        st.button('Återställ standardregister', on_click=change_registry, args=(True, True))
     if start:
         clear_result()
         try:
@@ -532,7 +520,6 @@ def main():
                     registry_content=registry_upload.getvalue() if registry_upload else None,
                     registry_snapshot_date=selected_registry.snapshot_date,
                     registry_source=selected_registry,
-                    registry_mode='default' if enabled else 'disabled',
                     registry_name=registry_upload.name if registry_upload else None,
                     source_name=upload.name, defer_downloads=True)
         except Exception:

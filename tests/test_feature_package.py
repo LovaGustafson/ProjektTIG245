@@ -232,7 +232,9 @@ def test_export_source_locator_with_header_offset_and_repeated_identifiers():
             assert trace.export_row.tolist() == [2, 3, 2]
 
 
-def test_dashboard_sampling_and_register_remove_restore():
+def test_dashboard_sampling_and_register_replacement(monkeypatch):
+    monkeypatch.setattr('src.ingestion.registry_source.default_registry_location',
+                        lambda config: (None, 'Ej konfigurerat'))
     app = AppTest.from_file(str(APP), default_timeout=20).run()
     mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     app.file_uploader[0].set_value(('synthetic.xlsx', workbook(invoices(100)), mime)).run()
@@ -250,19 +252,16 @@ def test_dashboard_sampling_and_register_remove_restore():
         'Bortval på grund av kvotbegränsning': '0', 'Bortval på grund av klassificeringskonflikter': '0'}
     assert any('1 av önskade 5' in warning.value for warning in app.warning)
     assert app.session_state['review'].registry_source.kind == 'uploaded'
-    next(b for b in app.button if b.label == 'Ta bort register').click().run()
+    assert not {'Ta bort register', 'Återställ standardregister'} & {b.label for b in app.button}
+    app.file_uploader[1].set_value(None).run()
     assert 'review' not in app.session_state
     app.button[0].click().run()
     assert not app.exception
-    assert app.session_state['review'].registry_source.kind == 'disabled'
-    assert app.session_state['review'].result.summary.supplier_unavailable_rows == 100
-    next(b for b in app.button if b.label == 'Återställ standardregister').click().run()
-    assert not app.exception
-    assert app.file_uploader[1].value is None
-    app.button[0].click().run()
     assert app.session_state['review'].registry_source.kind == 'default'
-    next(b for b in app.button if b.label == 'Ta bort register').click().run()
+    assert app.session_state['review'].result.summary.supplier_unavailable_rows == 100
+    assert app.file_uploader[1].value is None
     app.file_uploader[1].set_value(('replacement.xlsx', workbook(registry()), mime)).run()
+    assert 'review' not in app.session_state
     app.button[0].click().run()
     assert not app.exception
     assert app.session_state['review'].registry_source.kind == 'uploaded'

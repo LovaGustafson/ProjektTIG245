@@ -31,7 +31,6 @@ def start_app(data):
     review = analyze_upload(workbook(data), registry_mode='disabled', defer_downloads=True)
     app = AppTest.from_file(str(APP), default_timeout=30)
     app.session_state['review'] = review
-    app.session_state['registry_enabled'] = False
     app.run()
     assert not app.exception
     return app, review
