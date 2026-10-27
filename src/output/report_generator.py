@@ -29,12 +29,28 @@ ROW_COLUMNS = ["verification_id", "verification_line_id"]
 CHECK_COLUMNS = [field.name for field in fields(CheckResult)] + ["verification_date", "header_text", "code", "message"]
 SUPPLIER_EVIDENCE_SHEETS = ('Leverantörsmatchning', 'Leverantörskandidater', 'Möjliga avtal',
                           'Urvalsidentiteter', 'Urvalspositioner')
+XLSX_EXCLUDED_COLUMNS = frozenset({
+    'candidate_count', 'contract_count', 'registry_snapshot_date',
+    'registry_date_warning', 'registry_date_check', 'registry_date_message',
+    'supplier_match_method',
+})
+
+
+def _xlsx_columns(data: pd.DataFrame) -> pd.DataFrame:
+    """Omit internal columns on an XLSX copy, retaining row and column order."""
+    return data.drop(columns=list(XLSX_EXCLUDED_COLUMNS), errors='ignore')
+
+
+def _export_rows(data, analysis):
+    # Remove hidden source-header collisions before enrichment, so generated
+    # hidden fields cannot survive under underscore-prefixed collision aliases.
+    return enrich_rows(_xlsx_columns(data), analysis)
 
 
 def _verification_rows(verifications: Iterable[Verification], supplier_analysis=None) -> pd.DataFrame:
     frames = [verification.rows for verification in verifications]
     rows = pd.concat(frames, sort=False) if frames else pd.DataFrame(columns=ROW_COLUMNS)
-    return enrich_rows(rows, supplier_analysis)
+    return _export_rows(rows, supplier_analysis)
 
 
 def supplier_sheets(analysis, positions=None):
@@ -66,7 +82,7 @@ def uncertain_supplier_rows(data, analysis):
         strong = analysis.rows.loc[analysis.rows['supplier_match_status'] == 'STRONG_MATCH',
                                    'source_row_position']
         data = data.loc[~data.index.isin(strong)]
-    result = enrich_rows(data, analysis)
+    result = _export_rows(data, analysis)
     if not available:
         evidence = {'source_row_position': list(data.index),
                     'header_text_normalized': (data['header_text'].map(normalize_header_text).tolist()
@@ -131,6 +147,7 @@ def audit_sheets(data, *, source_context=None, run_summary=None, sampling_eviden
 def _workbook(sheets: Mapping[str, pd.DataFrame]) -> bytes:
     prepared = {}
     for name, data in sheets.items():
+        data = _xlsx_columns(data)
         if name in SUPPLIER_EVIDENCE_SHEETS:
             data = supplier_evidence_rows(data)
         # Keep decimal precision instead of pandas' float conversion.
@@ -197,7 +214,8 @@ def generate_reports(
     flagged_invoices.xlsx contains 'checks' (all CheckResult fields) and 'rows'
     (all rows of the supplied flagged verifications). Separate sheets avoid
     collisions between business columns and check metadata and retain null
-    line IDs for verification-level checks. All columns and row order survive;
+    line IDs for verification-level checks. Row order and all columns except
+    XLSX_EXCLUDED_COLUMNS survive;
     index labels/attrs are not inserted into original business columns. Supplied
     source/run context is exported on separate evidence sheets. Uncertain rows
     have a separate report; supplied original/filter data adds excluded rows.
@@ -239,7 +257,7 @@ def generate_reports(
     # Factories preserve the serializer and sheet contents while allowing the UI
     # to prepare only the requested download. CLI callers still create all files.
     workbooks = {
-        "cleaned_data": lambda: _workbook({"rows": enrich_rows(cleaned_data, supplier_analysis),
+        "cleaned_data": lambda: _workbook({"rows": _export_rows(cleaned_data, supplier_analysis),
                                     **supplier_sheets(supplier_analysis), **audit(cleaned_data)}),
         "flagged_invoices": lambda: _workbook({
             "checks": pd.DataFrame(checks, columns=CHECK_COLUMNS),
@@ -304,7 +322,7 @@ def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_su
                      source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None,
                      filenames=None):
     review, excluded = review_tables(original_data, filtering)
-    review = enrich_rows(review, supplier_analysis)
+    review = _export_rows(review, supplier_analysis)
     counts = review_summary(original_data, filtering)
     if supplier_analysis is not None and supplier_analysis.registry.available:
         counts.update(supplier_analysis.summary())

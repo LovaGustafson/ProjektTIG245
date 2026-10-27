@@ -62,8 +62,6 @@ def show_supplier_summary(analysis, classification=None):
     full_analysis = analysis
     analysis = visible_supplier_analysis(analysis, classification)
     st.subheader('Leverantörsmatchning mot Koncerninköp')
-    for issue in analysis.registry.issues:
-        st.warning(issue)
     if not analysis.registry.available:
         message = 'Leverantörsmatchningen kunde inte genomföras. Kontrollera registret och kolumnmappningen.'
         if analysis.registry.source_sha256 is None and analysis.registry.source_kind in ('default', 'disabled'):

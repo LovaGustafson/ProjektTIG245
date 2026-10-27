@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from streamlit.testing.v1 import AppTest
 
 from src.pipeline import run_pipeline
+from src.output.report_generator import XLSX_EXCLUDED_COLUMNS
 from src.ui_support import analyze_upload
 from tests.synthetic_org import org
 
@@ -170,7 +171,7 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     assert app.session_state['review'].result.supplier_analysis.summary()['Rader med datumvarning'] == 0
 
 
-def test_exports_explain_name_matching_without_changing_evidence_schema_or_values():
+def test_exports_explain_name_matching_and_preserve_remaining_evidence_fields_and_values():
     review = analyze_upload(workbook(invoices()), registry_content=workbook(contracts()))
     analysis = review.result.supplier_analysis
     source_before = review.result.original_data.copy(deep=True)
@@ -191,7 +192,7 @@ def test_exports_explain_name_matching_without_changing_evidence_schema_or_value
             ('Urvalspositioner', review.result.sampling_evidence, 'matched_organization_number'),
         ):
             headers = {cell.value: cell for cell in book[sheet][1]}
-            assert list(headers) == original.columns.tolist()
+            assert list(headers) == [field for field in original.columns if field not in XLSX_EXCLUDED_COLUMNS]
             assert headers[org_field].comment.text.startswith('Organisationsnummer (från avtalsregistret).')
             assert 'juridisk identitet har inte verifierats' in headers[org_field].comment.text
             if 'supplier_match_status' in headers:
