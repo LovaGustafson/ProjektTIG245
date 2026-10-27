@@ -520,7 +520,17 @@ The confirmed 2026-09-29 presentation rule hides numbered `Slutk` markers in `Hu
 
 When supplier matching is available, review/cleaned/flagged/sample exports add matching fields and the sheets `Registerinformation`, `Leverantörsmatchning`, `Leverantörskandidater` and `Möjliga avtal`. Added fields avoid original-column collisions with `_` prefixes. An unusable supplied register yields availability/issue metadata instead of match results. Excluded exports are not supplier-enriched. `Möjliga avtal` carries the original register organization-number value, which can be an unusable identifier such as a personal-number form; this is open decision D5 in [Q14](docs/requirements/OPEN_QUESTIONS.md#q14--organization-number-policy-and-identifier-exposure).
 
-Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsöversikt`, `Exkluderingsregler`, `Urvalsmetod` and `Urvalspositioner`. Each export row maps to its exact source occurrence via export sheet/row, parsed source position, source Excel row, worksheet, filename and SHA-256. Combined workbooks distinguish included and excluded export sheets. Matching/contract evidence is subset to each report's population; complete-run summary and sampling evidence remain explicitly run-level context. Register metadata records the source name/kind/hash/date.
+The XLSX presentation excludes `candidate_count`, `contract_count`,
+`registry_snapshot_date`, `registry_date_warning`, `registry_date_check`,
+`registry_date_message` and `supplier_match_method` from every worksheet through
+the shared workbook serializer. Export-only source copies also omit these exact
+headers before supplier enrichment, preventing generated collision aliases from
+leaking the excluded fields. Other source columns, including existing prefixed
+names, retain their values and order. Internal analysis, saved results, source
+files and non-XLSX diagnostics retain these fields; matching explanations, scores,
+statuses, row order and source-row linkage are unchanged.
+
+Pipeline/UI workbooks add `Källspårning`, `Källinformation`, `Körningsöversikt`, `Exkluderingsregler`, `Urvalsmetod` and `Urvalspositioner`. Each export row maps to its exact source occurrence via export sheet/row, parsed source position, source Excel row, worksheet, filename and SHA-256. Combined workbooks distinguish included and excluded export sheets. Matching/contract evidence is subset to each report's population; complete-run summary and sampling evidence remain explicitly run-level context. Register metadata records the source name/kind/hash; the extraction date remains available internally.
 
 The priority-2 update additionally exports run-level `Urvalsbeslut`, `Urvalsidentiteter` and `Leverantörsvy`. `Urvalsmetod` includes the supplier-uniqueness method, target size and any shortfall explanation; `Urvalspositioner` contains only actual selections with row-level identity evidence. The supplier-view sheet records classifications without removing source rows or altering matching evidence in exports. Whole-run matching counts remain in RunSummary; supplier-status charts/cards use the explicit view subset and display its excluded count separately.
 
@@ -543,6 +553,11 @@ quota, active internal-rule count, limitations and classification fingerprint.
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 
 The visual overview in `src/ui_run_summary.py` precedes the detail views. It presents compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, flagged-verification, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. Contract-period statuses remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, flag/error explanations and exports remain available under Details and review. Temporary view filters do not change dashboard counts or the sample.
+
+Detailed register-validation issues are available in the collapsed
+`Registervarningar` expander under `Kontroller`, rather than as a list of warnings
+above the `Granskning` tables. Matching availability, row-specific findings,
+supplier cards, review filters and navigation retain their existing behavior.
 
 The 2026-10-02 UI clarification removes `Detektionskontroller`, its chart and status drill-downs, the `Ej kontrollerade` card and unassessed control rows from the interface. A single information box reads: `Attestkontroll ej genomförd – kräver attestregister eller motsvarande behörighetsunderlag som inte finns tillgängligt i prototypen.` Actual flagged findings and technical errors remain inspectable under `Flaggningar och tekniska fel`; analyzed/flagged/validation counts remain unchanged. Detection results and `RunSummary.check_status_counts` remain intact in memory and existing exports. Supplier matching, contract-period evidence (including `NOT_CHECKED`), sampling, filtering and all other counts are unchanged.
 

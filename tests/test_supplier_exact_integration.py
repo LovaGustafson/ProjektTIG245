@@ -10,6 +10,7 @@ import yaml
 from streamlit.testing.v1 import AppTest
 
 from src.ingestion.contract_reader import registry_from_frame
+from src.output.report_generator import XLSX_EXCLUDED_COLUMNS
 from src.supplier_matching.analysis import analyze_suppliers, ROW_FIELDS, CANDIDATE_FIELDS, CONTRACT_COLUMNS
 from src.supplier_matching.matcher import SupplierMatcher
 from src.ui_supplier_matches import simple_match_rows, candidate_summary
@@ -231,13 +232,18 @@ def test_saved_sampling_and_every_excel_export_preserve_selected_identity_and_sc
                 assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
                 assert sheets['Urvalsbeslut'].decision.tolist() == plan.decisions.decision.tolist()
                 if 'Leverantörsmatchning' in sheets:
-                    assert list(sheets['Leverantörsmatchning'].columns) == ROW_FIELDS
-                    assert list(sheets['Leverantörskandidater'].columns) == CANDIDATE_FIELDS
-                    assert list(sheets['Möjliga avtal'].columns) == CONTRACT_COLUMNS
+                    assert list(sheets['Leverantörsmatchning'].columns) == [
+                        field for field in ROW_FIELDS if field not in XLSX_EXCLUDED_COLUMNS]
+                    assert list(sheets['Leverantörskandidater'].columns) == [
+                        field for field in CANDIDATE_FIELDS if field not in XLSX_EXCLUDED_COLUMNS]
+                    assert list(sheets['Möjliga avtal'].columns) == [
+                        field for field in CONTRACT_COLUMNS if field not in XLSX_EXCLUDED_COLUMNS]
                 if filename in ('samlad_kontrollfil.xlsx', 'cleaned_data.xlsx'):
                     assert_candidate_contracts(sheets['Möjliga avtal'])
                     matched = sheets['Leverantörsmatchning'].set_index('source_row_position').loc[19]
-                    assert matched.matched_organization_number == org(101) and matched.candidate_count == 3
+                    assert matched.matched_organization_number == org(101)
+                    assert 'candidate_count' not in matched.index
+                    assert result.supplier_analysis.rows.set_index('source_row_position').loc[19].candidate_count == 3
                 if filename == 'manual_sample.xlsx':
                     assert sheets['Källspårning'].source_row_position.tolist() == [
                         p for verification in plan.sample for p in verification.rows.index]

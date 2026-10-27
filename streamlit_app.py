@@ -25,6 +25,7 @@ from src.supplier_matching.settings import load_matching_settings
 from src.ui_run_summary import show_run_summary
 from src.ui_overview_details import verification_details
 from src.ingestion.registry_source import default_registry_location, resolve_registry_source, load_contract_source
+from src.ingestion.excel_reader import ExcelReadError
 
 
 # Display labels only. Original values and report contents are left intact.
@@ -72,6 +73,7 @@ REPORT_LABELS = {
 def clear_result():
     home()
     st.session_state.pop('review', None)
+    st.session_state.pop('invoice_upload_error', None)
     st.session_state.pop('excluded_types', None)
     st.session_state.pop('manual_sample_method', None)
     st.session_state.pop('sampling_notice', None)
@@ -239,6 +241,10 @@ def show_analysis(review, flagged, errors):
         st.caption('Raderna finns kvar här med samtliga exkluderingsorsaker.')
         show_filtered_table(excluded, view='excluded')
     with controls:
+        if result.supplier_analysis is not None and result.supplier_analysis.registry.issues:
+            with st.expander('Registervarningar', expanded=False):
+                for issue in result.supplier_analysis.registry.issues:
+                    st.text(issue)
         if result.supplier_analysis is None or not result.supplier_analysis.registry.available:
             st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
         else:
@@ -452,6 +458,30 @@ def show_filters(review):
     return review
 
 
+def show_invoice_upload_feedback(upload):
+    """Describe receipt separately from validation, which runs on Starta analys."""
+    if upload is None:
+        return
+    st.text(f'Uppladdat fakturaunderlag: {upload.name}')
+    error = st.session_state.get('invoice_upload_error')
+    if error:
+        st.error(error)
+        return
+    review = st.session_state.get('review')
+    if review is None:
+        st.caption('Filen kontrolleras när du väljer Starta analys.')
+        return
+    validation = review.result.validation
+    if validation.schema_errors or any(row.validation_errors for row in validation.rows):
+        st.warning('Filen har lästs in men innehåller valideringsfel. '
+                   'Se Valideringsfel i resultatet för vad som behöver rättas.')
+    elif review.result.original_data.empty:
+        st.warning('Filen har lästs in men innehåller inga rader att granska. '
+                   'Kontrollera att fakturaunderlaget finns på det första kalkylbladet.')
+    else:
+        st.caption('Filen har kontrollerats utan valideringsfel. Du kan fortsätta med granskningen.')
+
+
 def show_upload_registry(source, config):
     """Show availability and a source-specific extraction date, using existing validation."""
     if source.content is None:
@@ -462,16 +492,23 @@ def show_upload_registry(source, config):
     # Per-session validation avoids reparsing the register on ordinary UI reruns.
     validation_key = (identity, repr(config))
     cached = st.session_state.get('upload_registry_validation')
-    if cached is None or cached[0] != validation_key:
-        cached = (validation_key, load_contract_source(source, config=config).available)
+    if cached is None or len(cached) != 3 or cached[0] != validation_key:
+        registry = load_contract_source(source, config=config)
+        cached = (validation_key, registry.available, bool(registry.issues))
         st.session_state['upload_registry_validation'] = cached
     if not cached[1]:
-        st.warning('Koncernavtalsregistret kunde inte läsas. Ladda upp ett giltigt register för leverantörsmatchning.')
+        st.warning('Koncernavtalsregistret kunde inte användas. Ladda upp en läsbar Excel-fil (.xlsx) '
+                   'med kolumner för leverantörsnamn och organisationsnummer och minst en leverantör.')
         return replace(source, snapshot_date=None)
 
     path, _ = default_registry_location(config)
     filename = path.name if source.kind == 'default' and path is not None else source.name
     st.text(f'Aktivt avtalsregister: {filename}')
+    if cached[2]:
+        st.caption('Registret kan användas för att matcha leverantörsnamn, men kontrollen visar '
+                   'uppgifter som behöver granskas. Se registervarningarna i resultatet.')
+    else:
+        st.caption('Registret har kontrollerats och används för att matcha leverantörsnamn.')
     dates = st.session_state.setdefault('upload_registry_dates', {})
     known_date = dates.get(identity, source.snapshot_date if source.kind == 'default' else None)
     registry_date = st.date_input('Registerutdragets datum', value=known_date,
@@ -502,6 +539,7 @@ def main():
             upload = st.file_uploader('Här laddar du upp fakturaunderlaget', type=['xlsx'],
                 on_change=clear_result, help='Det första kalkylbladet läses. Alla rader behandlas.')
             st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
+            invoice_feedback = st.empty()
         registry_config = load_matching_settings()
         with st.container(key='registry_upload_panel'):
             registry_upload = st.file_uploader('Här laddar du upp koncernavtalsregistret', type=['xlsx'],
@@ -512,6 +550,8 @@ def main():
             uploaded_name=registry_upload.name if registry_upload else None)
         selected_registry = show_upload_registry(selected_registry, registry_config)
         start = st.button('Starta analys', disabled=upload is None, type='primary')
+        if upload is None:
+            st.caption('Ladda upp fakturaunderlaget för att starta analysen.')
     if start:
         clear_result()
         try:
@@ -522,9 +562,14 @@ def main():
                     registry_source=selected_registry,
                     registry_name=registry_upload.name if registry_upload else None,
                     source_name=upload.name, defer_downloads=True)
+        except ExcelReadError:
+            st.session_state['invoice_upload_error'] = (
+                'Fakturaunderlaget kunde inte läsas. Ladda upp en giltig Excel-fil (.xlsx) och försök igen.')
         except Exception:
-            st.error('Analysen kunde inte slutföras. Kontrollera att filen är en giltig Excel-fil '
-                     'och att projektets inställningar är korrekta.')
+            st.session_state['invoice_upload_error'] = (
+                'Analysen kunde inte slutföras. Försök igen eller be om hjälp om problemet kvarstår.')
+    with invoice_feedback.container():
+        show_invoice_upload_feedback(upload)
     if 'review' in st.session_state:
         try:
             review = show_filters(st.session_state['review'])
@@ -534,9 +579,10 @@ def main():
         show_result(review)
     elif not start:
         with st.container(border=True, key='empty_state'):
-            st.subheader('Här börjar granskningen', icon=':material/fact_check:')
-            st.write('När analysen är klar visas en översikt, eventuella avvikelser och valideringsfel. '
-                     'Därefter kan du exportera granskningsunderlaget.')
+            st.subheader('Kom igång med din granskning', icon=':material/fact_check:')
+            st.write('Ladda upp ditt fakturaunderlag till vänster och starta analysen. '
+                     'Du får sedan en översikt över resultatet, eventuella avvikelser '
+                     'och underlag för manuell granskning.')
             st.caption('Resultatet är ett stöd för granskning, inte ett godkännande av fakturorna.')
 
 

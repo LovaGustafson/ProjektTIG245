@@ -92,7 +92,8 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     assert not any(b.key and b.key.startswith(('kpi_', 'control_')) for b in app.button)
     app.button[0].click().run()
     assert not app.exception
-    assert 'Analysen kunde inte slutföras' in app.error[0].value
+    assert app.error[0].value == (
+        'Fakturaunderlaget kunde inte läsas. Ladda upp en giltig Excel-fil (.xlsx) och försök igen.')
     assert len(app.download_button) == 0
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
