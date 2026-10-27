@@ -55,7 +55,7 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     original = review.result.original_data.copy(deep=True)
     app.button(key='supplier_' + key).click().run()
     assert not app.exception
-    table = next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0]
+    table = next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').dataframe[0]
     assert table.value.Vernr.tolist() == ids
     assert list(table.proto.column_order)[:5] == [
         'Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret',
@@ -80,7 +80,7 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
     assert expected_text in [t.value for t in app.text]
     assert any('Registerdatumvarning' in str(b.proto) for b in app.get('markdown'))
     if key == 'AMBIGUOUS_MATCH':
-        candidates = next(e for e in next(tab for tab in app.tabs if tab.label == 'Granskning').expander if e.label == 'Visa tekniska matchningsdetaljer')
+        candidates = next(e for e in next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').expander if e.label == 'Visa tekniska matchningsdetaljer')
         assert candidates.dataframe[1].value.supplier_name.tolist() == ['Nordmöbler AB', 'Nordmöbler Göteborg AB']
         assert not candidates.proto.expanded
         assert any('Manuell granskning krävs' in w.value for w in app.warning)
@@ -88,7 +88,7 @@ def test_supplier_cards_exact_rows_detail_and_home(key, ids):
         assert 'Sökt leverantörsnamn: Obekant Testbolag AB' in [t.value for t in app.text]
     app.button(key='home').click().run()
     assert not app.exception
-    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value.Vernr.tolist() == ['strong', 'ambiguous', 'absent', 'unknown']
+    assert next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').dataframe[0].value.Vernr.tolist() == ['strong', 'ambiguous', 'absent', 'unknown']
     assert 'selected_supplier' not in app.session_state
     assert not any(s.value == 'Vald rad – detaljer' for s in app.subheader)
     assert review.downloads == downloads

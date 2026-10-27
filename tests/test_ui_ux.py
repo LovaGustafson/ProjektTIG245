@@ -153,7 +153,10 @@ def test_manual_supplier_names_use_source_links_and_keep_multiple_or_missing_nam
     app.session_state['review'] = upload
     app.run()
     assert not app.exception
-    assert next(tab for tab in app.tabs if tab.label == 'Manuellt urval').dataframe[0].value.supplier.tolist() == selected.supplier.tolist()
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
+    selected_table = next(table.value for table in manual.dataframe
+                          if list(table.value.columns) == ['verification_id', 'supplier', 'supplier_classification'])
+    assert selected_table.supplier.tolist() == selected.supplier.tolist()
     detail = expander(app, 'Utvalda ·')
     assert evidence_table(detail, 'supplier').supplier.tolist() == selected.supplier.tolist()
 

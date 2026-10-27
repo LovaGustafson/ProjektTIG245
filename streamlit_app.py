@@ -22,7 +22,10 @@ from src.ui_supplier_panel import show_supplier_scope
 from src.supplier_matching.view_scope import visible_supplier_analysis
 from src.ui_navigation import home, select_drilldown, active_drilldown
 from src.supplier_matching.settings import load_matching_settings
-from src.ui_run_summary import show_run_summary
+from src.ui_run_summary import (
+    dashboard_tables, show_run_summary, show_deviations_and_contracts, show_sampling_overview,
+)
+from src.ui_chart_selection import prepare_chart_selections
 from src.ui_overview_details import verification_details
 from src.ingestion.registry_source import default_registry_location, resolve_registry_source, load_contract_source
 from src.ingestion.excel_reader import ExcelReadError
@@ -201,39 +204,53 @@ def show_result(review):
     st.success('Analysen är klar. Granska resultatet i flikarna nedan.', icon=':material/task_alt:')
     # Keep technical failures visible regardless of the active tab.
     if any(check.status == 'ERROR' for r in result.detection_results for check in r.checks):
-        st.warning('Vissa kontroller avbröts med tekniska fel. Se Flaggningar och tekniska fel under Kontroller.',
+        st.warning('Vissa kontroller avbröts med tekniska fel. Se Flaggningar och tekniska fel under Detaljer → Kontroller.',
                    icon=':material/warning:')
     for message in filter_column_errors(result.standardized_data):
         st.error(message)
     for message in result.filtering.todos:
         if message not in filter_column_errors(result.standardized_data):
             st.warning(message)
-    analysis_tab, manual_tab = st.tabs(['Analys och granskning', 'Manuellt urval'])
-    with analysis_tab:
-        show_analysis(review, flagged, errors)
+    prepare_chart_selections(result)
+    charts = dashboard_tables(result)
+    kept, excluded = review_tables(result.original_data, result.filtering)
+    overview_tab, deviations_tab, manual_tab, supplier_tab, details_tab, export_tab = st.tabs([
+        'Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
+        'Leverantörsmatchning', 'Detaljer', 'Export',
+    ])
+    with overview_tab:
+        show_run_summary(result, charts=charts)
+    with deviations_tab:
+        show_deviations_and_contracts(result, charts=charts)
     with manual_tab:
-        show_manual_sample(review.result)
+        show_sampling_overview(result, charts=charts)
+        if result.supplier_analysis is not None:
+            registry = result.supplier_analysis.registry
+            st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
+                    (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
+        show_manual_sample(result)
+    with supplier_tab:
+        show_supplier_matching(result, kept)
+    with details_tab:
+        show_details(result, flagged, errors, excluded)
+    with export_tab:
+        show_reports(review)
 
 
-def show_analysis(review, flagged, errors):
-    result = review.result
-    show_run_summary(result)
-    if result.supplier_analysis is not None:
-        registry = result.supplier_analysis.registry
-        st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
-                (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
+def show_supplier_matching(result, kept):
+    show_supplier_summary(result.supplier_analysis, result.supplier_view)
+    st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
+               'Även rader med valideringsfel finns kvar för granskning.')
+    show_review_table(result, kept, key='review_rows')
+    show_supplier_scope(result)
+
+
+def show_details(result, flagged, errors, excluded):
     st.divider()
     st.subheader('Detaljer och granskning')
     show_dashboard_kpis(result)
-    review_tab, excluded_tab, controls, reports = st.tabs(
-        ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export'])
-    kept, excluded = review_tables(result.original_data, result.filtering)
+    review_tab, excluded_tab, controls = st.tabs(['Granskning', 'Bortfiltrerade', 'Kontroller'])
     with review_tab:
-        show_supplier_summary(result.supplier_analysis, result.supplier_view)
-        st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
-                   'Även rader med valideringsfel finns kvar för granskning.')
-        show_review_table(result, kept, key='review_rows')
-        show_supplier_scope(result)
         show_deviations(result, flagged)
         with st.expander('Valideringsfel', expanded=not errors.empty):
             show_validation(errors)
@@ -248,11 +265,10 @@ def show_analysis(review, flagged, errors):
         if result.supplier_analysis is None or not result.supplier_analysis.registry.available:
             st.info('Upphandlingskontroll – ej tillgänglig. Upphandlingsregister saknas.')
         else:
-            st.info('Leverantörsmatchning och separata avtalsperioder visas under Granskning. Avtalstrohet har inte kontrollerats; '
+            st.info('Leverantörsmatchning visas under Leverantörsmatchning och separata avtalsperioder under '
+                    'Avvikelser och avtalsperioder. Avtalstrohet har inte kontrollerats; '
                     'vilket avtal fakturan avser behöver utredas.')
         show_overview(result, flagged, errors)
-    with reports:
-        show_reports(review)
 
 
 def show_manual_sample(result):

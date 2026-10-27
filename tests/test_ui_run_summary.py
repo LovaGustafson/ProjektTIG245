@@ -22,6 +22,36 @@ def counts(table):
     return table.set_index('Status')['Antal'].to_dict()
 
 
+@pytest.mark.parametrize('renderer, heading, chart_keys, metric_count', [
+    ('show_run_summary', 'Analysöversikt', {'chart_population', 'chart_suppliers'}, 5),
+    ('show_deviations_and_contracts', 'Avvikelser och avtalsperioder', {'chart_contracts'}, 0),
+    ('show_sampling_overview', 'Manuellt stickprov', {'chart_sample'}, 4),
+])
+def test_separated_renderers_preserve_their_existing_content_only(renderer, heading, chart_keys, metric_count):
+    review = analyze_upload(workbook(invoices()), registry_content=workbook(registry()), defer_downloads=True)
+    plan = review.result.sampling_result
+    app = AppTest.from_string(
+        'import streamlit as st\n'
+        f'from src.ui_run_summary import {renderer}\n'
+        f'{renderer}(st.session_state["result"])', default_timeout=20)
+    app.session_state['result'] = review.result
+    app.run()
+    assert not app.exception
+    assert [item.value for item in app.subheader] == [heading]
+    assert len(app.metric) == metric_count
+    actual_charts = {key for key in ('chart_population', 'chart_suppliers', 'chart_exclusions',
+                                     'chart_contracts', 'chart_sample')
+                     if any(f':{key}:event:' in chart.proto.id for chart in app.get('vega_lite_chart'))}
+    assert actual_charts == chart_keys
+    assert not any(item.label.startswith('Vyavgränsning') for item in app.expander)
+    assert not review.downloads._bytes
+    assert review.result.sampling_result is plan
+    if renderer == 'show_deviations_and_contracts':
+        assert ('För rader utan någon leverantörskandidat finns ingen avtalsjämförelse i backend. '
+                'De räknas inte i denna fördelning; deras evidens finns under Leverantörsmatchning.'
+                in [item.value for item in app.caption])
+
+
 def test_charts_reconcile_source_filters_sampling_and_export():
     data = invoices(46)
     data.loc[0, ['Konto', 'Vertyp', 'Huvudtext']] = ['7698', 'FBFM', 'mall']
@@ -104,7 +134,7 @@ def test_unavailable_register_has_no_fabricated_supplier_statuses(register_conte
 
 
 @pytest.mark.parametrize('mode', ['empty', 'all_excluded', 'no_exclusions', 'matching'])
-def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
+def test_dashboard_renders_zero_and_nonzero_results_in_assigned_tabs(mode):
     data = invoices(0 if mode == 'empty' else 3)
     if mode == 'all_excluded':
         data['Konto'] = '7698'
@@ -117,7 +147,17 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
     app.run()
     assert not app.exception
     assert app.subheader[0].value == 'Analysöversikt'
-    assert any(h.value == 'Detaljer och granskning' for h in app.subheader)
+    top_tabs = list(app.main.get('tab_container')[0].children.values())
+    assert [tab.label for tab in top_tabs] == [
+        'Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
+        'Leverantörsmatchning', 'Detaljer', 'Export']
+    overview, deviations, sample, matching, details, exports = top_tabs
+    assert overview.subheader[0].value == 'Analysöversikt'
+    assert deviations.subheader[0].value == 'Avvikelser och avtalsperioder'
+    assert sample.subheader[0].value == 'Manuellt stickprov'
+    assert matching.subheader[0].value == 'Leverantörsmatchning mot Koncerninköp'
+    assert any(heading.value == 'Detaljer och granskning' for heading in details.subheader)
+    assert exports.subheader[0].value == 'Exportera granskningsunderlag'
     assert not any('Detektionskontroller' in item.value for item in app.markdown)
     assert not any('kontrollresultat' in e.label.lower() for e in app.expander)
     assert not any(b.key == 'control_not_checked' for b in app.button)
@@ -145,11 +185,17 @@ def test_dashboard_renders_zero_and_nonzero_results_before_detail_tables(mode):
         assert spec['encoding']['x']['axis']['title'] != 'Kontrollresultat'
         assert spec['encoding']['x']['axis']['tickMinStep'] == 1
         assert spec['layer'][1]['encoding']['text']['field'] == 'Antal'
-    elements = [node.type for node in app]
-    if chart_elements:
-        assert elements.index('vega_lite_chart') < elements.index('dataframe')
+    for tab, allowed in ((overview, ('chart_population', 'chart_suppliers', 'chart_exclusions')),
+                         (deviations, ('chart_contracts',)), (sample, ('chart_sample',))):
+        assert all(any(f':{key}:event:' in chart.proto.id for key in allowed)
+                   for chart in tab.get('vega_lite_chart'))
+    assert not matching.get('vega_lite_chart')
+    assert not details.get('vega_lite_chart')
+    assert not exports.get('vega_lite_chart')
     assert len(app.download_button) == 6
-    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe  # Existing source-linked detail views remain.
+    assert len(exports.download_button) == 6
+    assert matching.dataframe  # Existing source-linked detailed matching table remains.
+    assert not any(table.key == 'review_rows' for table in overview.dataframe)
     pd.testing.assert_frame_equal(review.result.original_data, source_before)
     assert review.downloads == downloads_before
 
@@ -165,7 +211,8 @@ def test_graphical_overview_ignores_legacy_state_and_supports_category_selection
     app.run()
     assert not app.exception
     assert len(app.metric) == 17
-    assert len(next(tab for tab in app.tabs if tab.label == 'Manuellt urval').metric) == 8  # Size, classifications and quota/conflict rejections.
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
+    assert len(manual.metric) == 12  # Four overview metrics plus the eight existing detailed metrics.
     charts = app.get('vega_lite_chart')
     assert len(charts) == 5
     for chart in charts:

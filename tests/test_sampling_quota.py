@@ -197,14 +197,16 @@ def test_ui_and_every_export_share_classifications_rules_snapshot_and_decisions(
         app.session_state['review'] = current
         app.run()
         assert not app.exception
-        manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')
+        manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
         metrics = {m.label: m.value for m in manual.metric}
         assert metrics['Bekräftat interna'] == str(plan.classification_counts['INTERNAL'])
         assert metrics['Bekräftat externa'] == str(plan.classification_counts['EXTERNAL'])
         assert metrics['Oklassificerade'] == str(plan.classification_counts['UNCLASSIFIED'])
         assert metrics['Bortval på grund av kvotbegränsning'] == str(plan.quota_rejections)
         assert metrics['Bortval på grund av klassificeringskonflikter'] == str(plan.conflict_rejections)
-        assert manual.dataframe[0].value.verification_id.tolist() == ids(plan)
+        selected = next(table.value for table in manual.dataframe
+                        if table.value.columns.tolist() == ['verification_id', 'supplier', 'supplier_classification'])
+        assert selected.verification_id.tolist() == ids(plan)
         assert any('faktiska interna andelen kan vara högre' in c.value for c in manual.caption)
     # Unrelated pipeline results and the original supplied data remain identical.
     for field in ('original_data', 'standardized_data', 'filtering', 'verifications', 'detection_results', 'supplier_analysis'):

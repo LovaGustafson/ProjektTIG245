@@ -68,7 +68,7 @@ def test_dynamic_reinclude_additional_type_reset_and_upload_change():
     app.multiselect(key='excluded_types').unselect('KR01').run()
     assert not app.exception
     assert app.button(key="kpi_review").label.split("**")[1] == '3'
-    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Vernr'].tolist() == ['2', '5', '6']
+    assert next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').dataframe[0].value['Vernr'].tolist() == ['2', '5', '6']
     review = app.session_state['review']
     assert len(pd.read_excel(BytesIO(review.downloads['granskning.xlsx']))) == 3
     app.multiselect(key='excluded_types').select('NEW').run()
@@ -144,7 +144,7 @@ def test_metadata_header_upload_filters_rendering_and_export(tmp_path):
     assert app.multiselect(key='excluded_types').value == load_exclusions()['excluded_verification_types']
     assert 'NEW' in app.multiselect(key='excluded_types').options
     assert 'NEW' not in app.multiselect(key='excluded_types').value
-    kept = next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value
+    kept = next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').dataframe[0].value
     removed = next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value
     assert kept.columns.tolist() == data.columns.tolist()
     assert kept['Vernr'].tolist() == ['5', '6']

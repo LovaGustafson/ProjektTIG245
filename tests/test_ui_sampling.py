@@ -39,8 +39,10 @@ def start_app(data):
 def assert_visible_export(app):
     review = app.session_state['review']
     plan = review.result.sampling_result
-    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt urval')
-    assert manual.dataframe[0].value.verification_id.tolist() == sample_ids(review)
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
+    selected = next(table.value for table in manual.dataframe
+                    if list(table.value.columns) == ['verification_id', 'supplier', 'supplier_classification'])
+    assert selected.verification_id.tolist() == sample_ids(review)
     sheets = pd.read_excel(BytesIO(review.downloads['manual_sample.xlsx']), sheet_name=None, dtype=object)
     assert sheets['rows'].verification_id.tolist() == [
         v.verification_id for v in review.result.manual_sample for _ in v.rows.index]

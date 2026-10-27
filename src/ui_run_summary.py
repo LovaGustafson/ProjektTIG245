@@ -7,7 +7,6 @@ from src.models.supplier import SupplierMatchStatus
 from src.presentation import REGISTRY_ORGANIZATION_COLUMNS, SUPPLIER_MATCH_EXPLANATION, supplier_evidence_rows
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.supplier_matching.view_scope import visible_supplier_analysis
-from src.ui_supplier_panel import show_supplier_scope
 from src.ui_supplier_matches import MATCH_LABELS as SUPPLIER_LABELS, show_supplier_candidates
 from src.ui_support import display_dataframe
 from src.ui_chart_selection import (
@@ -223,12 +222,14 @@ def show_count_chart(data, *, unit, key, colors=None, empty_message):
     return selected
 
 
-def show_run_summary(result):
+def show_run_summary(result, *, charts=None):
+    """Render only the analysis overview over the completed run's evidence."""
     s = result.summary
     if s is None:
         return
-    prepare_chart_selections(result)
-    charts = dashboard_tables(result)
+    if charts is None:
+        prepare_chart_selections(result)
+        charts = dashboard_tables(result)
     st.subheader('Analysöversikt')
     st.caption('Hela analyskörningen. Tillfälliga vyfilter ändrar inte dessa antal eller exporterna.')
     st.caption('Öppna en kategori under diagrammen för förklaring, registrerade orsaker och underliggande poster.')
@@ -265,7 +266,10 @@ def show_run_summary(result):
                 show_source_rows(source_rows(result, positions))
     with right, st.container(border=True):
         st.markdown('#### Leverantörsmatchning')
-        show_supplier_scope(result)
+        if result.supplier_view is not None:
+            excluded = int(result.supplier_view['excluded_from_view'].astype(bool).sum())
+            st.caption(f'Leverantörsdiagrammet avser leverantörsvyn. {excluded} källrader är exkluderade '
+                       'av bekräftade vyregler. Se klassificering och orsaker under Leverantörsmatchning.')
         analysis = visible_supplier_analysis(result.supplier_analysis, result.supplier_view)
         if analysis is None or not analysis.registry.available:
             st.info(f'Matchning ej tillgänglig för {s.supplier_unavailable_rows} kvarvarande rader. '
@@ -295,12 +299,21 @@ def show_run_summary(result):
             with st.expander(f'{row.Kategori} · {row.Antal} regelträffar', expanded=row.Status == selected_exclusion):
                 show_source_rows(exclusion_details(result, row.Status))
 
+
+def show_deviations_and_contracts(result, *, charts=None):
+    """Render recorded detection flags and the separate contract-period evidence."""
+    s = result.summary
+    if s is None:
+        return
+    if charts is None:
+        prepare_chart_selections(result)
+        charts = dashboard_tables(result)
     st.subheader('Avvikelser och avtalsperioder')
     st.caption(f'{s.flagged_verifications} flaggade verifikationer med {s.flagged_rows} tillhörande rader. '
-               'Tekniska fel redovisas separat under Kontroller.')
+               'Tekniska fel redovisas separat under Detaljer → Kontroller.')
     show_verification_drilldown(result, 'flagged', 'Flaggade', s.flagged_verifications,
                                'Verifikationer med minst ett FLAGGED-resultat. '
-                               'Orsakerna visas under Flaggade verifikationer i fliken Granskning.')
+                               'Orsakerna visas under Flaggade verifikationer i Detaljer → Granskning.')
     st.info('Attestkontroll ej genomförd – kräver attestregister eller motsvarande behörighetsunderlag '
             'som inte finns tillgängligt i prototypen.')
     with st.container(border=True):
@@ -311,6 +324,15 @@ def show_run_summary(result):
                    'Inom perioden betyder inte att köpet omfattas av avtalet.')
         show_contract_drilldowns(result, charts['contracts'], selected_contract)
 
+
+def show_sampling_overview(result, *, charts=None):
+    """Render the existing sampling overview without generating or selecting a sample."""
+    s = result.summary
+    if s is None:
+        return
+    if charts is None:
+        prepare_chart_selections(result)
+        charts = dashboard_tables(result)
     with st.container(border=True, key='sample_overview'):
         st.subheader('Manuellt stickprov')
         sampling = result.sampling_result
@@ -369,7 +391,7 @@ def show_run_summary(result):
                                        'Övriga grupper tillhör populationen men valdes inte till stickprovet.',
                                        expanded=row.Status == selected_sample)
         st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas. '
-                   'Se urvalet under Manuellt urval och hämta underlaget under Export.')
+                   'Se urvalet nedan i Manuellt stickprov och hämta underlaget under Export.')
         if s.ungrouped_rows:
             st.warning(f'{s.ungrouped_rows} kvarvarande rader saknar användbart verifikations-ID. '
                        'De finns i granskningsunderlaget men ingår inte i det verifikationsbaserade stickprovet.')
