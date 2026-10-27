@@ -43,8 +43,15 @@ def review():
 def overview_app(result):
     app = AppTest.from_string(
         'import streamlit as st\n'
-        'from src.ui_run_summary import show_run_summary\n'
-        'show_run_summary(st.session_state["result"])', default_timeout=20)
+        'from src.ui_chart_selection import prepare_chart_selections\n'
+        'from src.ui_run_summary import (dashboard_tables, show_run_summary, '
+        'show_deviations_and_contracts, show_sampling_overview)\n'
+        'result = st.session_state["result"]\n'
+        'prepare_chart_selections(result)\n'
+        'charts = dashboard_tables(result)\n'
+        'show_run_summary(result, charts=charts)\n'
+        'show_deviations_and_contracts(result, charts=charts)\n'
+        'show_sampling_overview(result, charts=charts)', default_timeout=20)
     app.session_state['result'] = result
     app.run()
     assert not app.exception

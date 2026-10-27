@@ -79,10 +79,14 @@ def test_streamlit_result_screen():
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['1', '0', '1']
     assert [b.label.split('\n')[1] for b in app.button if b.key and b.key.startswith('control_')] == ['Analyserade', 'Flaggade', 'Valideringsfel']
     assert [tab.label for tab in app.tabs] == [
-        'Analys och granskning', 'Granskning', 'Bortfiltrerade', 'Kontroller', 'Export', 'Manuellt urval']
+        'Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
+        'Leverantörsmatchning', 'Detaljer', 'Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
     main_tabs = list(app.main.get('tab_container')[0].children.values())
-    assert [tab.label for tab in main_tabs] == ['Analys och granskning', 'Manuellt urval']
-    assert [tab.label for tab in main_tabs[0].get('tab_container')[0].children.values()] == ['Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
+    assert [tab.label for tab in main_tabs] == [
+        'Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
+        'Leverantörsmatchning', 'Detaljer', 'Export']
+    assert [tab.label for tab in main_tabs[4].get('tab_container')[0].children.values()] == [
+        'Granskning', 'Bortfiltrerade', 'Kontroller']
     assert len(app.radio) == 1  # One shared sampling UI, no duplicated controls.
     assert len(app.get('download_button')) == 6
     assert not any('Vissa kontroller har inte bedömts' in warning.value for warning in app.warning)
@@ -224,7 +228,7 @@ def test_mixed_amount_all_ui_tables_validation_and_export(tmp_path, caplog):
     assert not app.exception
     for table in app.dataframe:
         pa.Table.from_pandas(table.value, preserve_index=False)
-    assert next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0].value['Utfall'].tolist() == ['12.5', text]
+    assert next(table for table in app.dataframe if table.key == 'review_rows').value['Utfall'].tolist() == ['12.5', text]
     assert next(tab for tab in app.tabs if tab.label == 'Bortfiltrerade').dataframe[0].value['Utfall'].iloc[1] == text
     app.selectbox[0].select(1).run()
     assert not app.exception

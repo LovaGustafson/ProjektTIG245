@@ -552,11 +552,29 @@ quota, active internal-rule count, limitations and classification fingerprint.
 
 `src/run_summary.py` derives actual pipeline counts for UI and export: input/included/excluded/ungrouped rows, eligible/sample verifications, sampled rows, per-rule exclusions, flagged verifications and their rows, matching availability/confidence, detection statuses and contract-period statuses. Units remain explicit; overlapping exclusions and multiple contract comparisons are not summed as unique invoices. No reviewer completion or persistent sign-off state is invented.
 
-The visual overview in `src/ui_run_summary.py` precedes the detail views. It presents compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, flagged-verification, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. Contract-period statuses remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, flag/error explanations and exports remain available under Details and review. Temporary view filters do not change dashboard counts or the sample.
+The analysis UI uses six top-level tabs in this order: `Analysöversikt`,
+`Avvikelser och avtalsperioder`, `Manuellt stickprov`, `Leverantörsmatchning`,
+`Detaljer` and `Export`. Landing-page uploads, feedback and base exclusion
+filters remain outside the result tabs. All tabs retain eager execution; tab
+navigation does not create an analysis, regenerate a sample or reset selections.
+`src/ui_run_summary.py` separates the overview, deviations/contract periods and
+sampling overview into renderers over the same completed result and chart data.
+The sampling tab renders its original overview first, followed by the dynamic
+register identity and then the existing method controls, selected rows and
+decision tables. Detailed supplier cards, the `review_rows` table, row details
+and the complete supplier-view scope are rendered once under `Leverantörsmatchning`.
+The overview retains supplier-chart scope context and links to that detailed
+classification section. `Detaljer` retains the population KPI drill-downs and
+nested `Granskning`, `Bortfiltrerade` and `Kontroller` tabs. `Export` owns the same
+six deferred download controls. Widget keys, callbacks and source-index mapping
+retain their existing contracts; `Till översikt` still resets views without
+programmatically selecting a native tab.
+
+The visual sections present compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, flagged-verification, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. Contract-period statuses remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, flag/error explanations and exports remain available in their respective tabs. Temporary view filters do not change dashboard counts or the sample. Metric and label simplification is outside this navigation change.
 
 Detailed register-validation issues are available in the collapsed
-`Registervarningar` expander under `Kontroller`, rather than as a list of warnings
-above the `Granskning` tables. Matching availability, row-specific findings,
+`Registervarningar` expander under `Detaljer → Kontroller`, rather than as a list of warnings
+above the supplier-matching tables. Matching availability, row-specific findings,
 supplier cards, review filters and navigation retain their existing behavior.
 
 The 2026-10-02 UI clarification removes `Detektionskontroller`, its chart and status drill-downs, the `Ej kontrollerade` card and unassessed control rows from the interface. A single information box reads: `Attestkontroll ej genomförd – kräver attestregister eller motsvarande behörighetsunderlag som inte finns tillgängligt i prototypen.` Actual flagged findings and technical errors remain inspectable under `Flaggningar och tekniska fel`; analyzed/flagged/validation counts remain unchanged. Detection results and `RunSummary.check_status_counts` remain intact in memory and existing exports. Supplier matching, contract-period evidence (including `NOT_CHECKED`), sampling, filtering and all other counts are unchanged.

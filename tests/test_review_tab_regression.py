@@ -21,6 +21,8 @@ MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 RETAINED_IDS = ['strong', 'ambiguous', 'absent', 'unknown']
 MATCH_COLUMNS = ['Leverantör i internkontrollsfilen', 'Leverantör i avtalsregistret',
                  'Matchningsresultat', 'Matchningsscore', 'Varför detta resultat?']
+TOP_TABS = ['Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
+            'Leverantörsmatchning', 'Detaljer', 'Export']
 
 
 @pytest.fixture
@@ -54,7 +56,7 @@ def register_rows():
 
 
 def review_tab(app):
-    return next(tab for tab in app.tabs if tab.label == 'Granskning')
+    return next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning')
 
 
 def register_warnings(app):
@@ -84,12 +86,15 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     issues = saved.result.supplier_analysis.registry.issues
     assert len(issues) == 1 and 'INVALID_FORMAT' in issues[0]
     main_tabs = list(app.main.get('tab_container')[0].children.values())
-    assert [tab.label for tab in main_tabs] == ['Analys och granskning', 'Manuellt urval']
-    assert [tab.label for tab in main_tabs[0].get('tab_container')[0].children.values()] == [
-        'Granskning', 'Bortfiltrerade', 'Kontroller', 'Export']
+    assert [tab.label for tab in main_tabs] == TOP_TABS
+    assert [tab.label for tab in main_tabs[4].get('tab_container')[0].children.values()] == [
+        'Granskning', 'Bortfiltrerade', 'Kontroller']
     tab = review_tab(app)
     assert [heading.value for heading in tab.subheader] == [
-        'Leverantörsmatchning mot Koncerninköp', 'Flaggade verifikationer', 'Valideringsfel']
+        'Leverantörsmatchning mot Koncerninköp']
+    details_review = next(tab for tab in app.tabs if tab.label == 'Granskning')
+    assert [heading.value for heading in details_review.subheader] == [
+        'Flaggade verifikationer', 'Valideringsfel']
     assert [button.key for button in tab.button if button.key and button.key.startswith('supplier_')] == [
         'supplier_all', 'supplier_STRONG_MATCH', 'supplier_AMBIGUOUS_MATCH',
         'supplier_NO_MATCH', 'supplier_SUPPLIER_NOT_IDENTIFIED', 'supplier_date_warning']
@@ -110,10 +115,31 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     positions = {id(item): position for position, item in enumerate(ordered)}
     source_caption = next(item for item in tab.caption if item.value.startswith('Alla kvarvarande rader'))
     classification = next(item for item in tab.expander if item.label.startswith('Vyavgränsning'))
-    validation = next(item for item in tab.expander if item.label == 'Valideringsfel')
     assert positions[id(tab.subheader[0])] < positions[id(source_caption)] < positions[id(table)]
-    assert positions[id(table)] < positions[id(classification)] < positions[id(tab.subheader[1])]
-    assert positions[id(tab.subheader[1])] < positions[id(validation)]
+    assert positions[id(table)] < positions[id(classification)]
+    assert len([item for item in app.expander if item.label.startswith('Vyavgränsning')]) == 1
+    assert not any(item.label.startswith('Vyavgränsning') for item in main_tabs[0].expander)
+    assert not any(button.key and button.key.startswith('supplier_') for button in main_tabs[0].button)
+    assert not any(table.key == 'review_rows' for table in main_tabs[0].dataframe)
+
+    assert [heading.value for heading in main_tabs[0].subheader] == ['Analysöversikt']
+    assert [heading.value for heading in main_tabs[1].subheader] == ['Avvikelser och avtalsperioder']
+    assert ('För rader utan någon leverantörskandidat finns ingen avtalsjämförelse i backend. '
+            'De räknas inte i denna fördelning; deras evidens finns under Leverantörsmatchning.'
+            in [item.value for item in main_tabs[1].caption])
+    manual = main_tabs[2]
+    sample_overview = next(container for container in manual.get('flex_container')
+                           if container.proto.id.endswith('-sample_overview'))
+    register_info = next(item for item in manual.text if item.value.startswith('Register för denna körning:'))
+    method_heading = next(item for item in manual.subheader if item.value == 'Urvalsmetod')
+    manual_positions = {id(item): position for position, item in enumerate(descendants(manual))}
+    assert max(manual_positions[id(item)] for item in descendants(sample_overview)) < manual_positions[id(register_info)]
+    assert manual_positions[id(register_info)] < manual_positions[id(method_heading)]
+    assert register_info.value == 'Register för denna körning: syntetiskt-register.xlsx (matchning tillgänglig)'
+    assert len([item for item in app.text if item.value.startswith('Register för denna körning:')]) == 1
+    assert len(app.radio) == len(manual.radio) == 1
+    assert manual.radio[0].key == 'manual_sample_method'
+    assert len(app.download_button) == len(main_tabs[5].download_button) == 6
 
     assert not any('Registerrad' in warning.value for warning in tab.warning)
     warnings = register_warnings(app)
@@ -171,6 +197,47 @@ def test_review_filters_selection_and_navigation_preserve_completed_analysis(loc
     assert app.session_state['review'] is saved
 
 
+def test_eager_tab_reruns_keep_random_sample_plans_and_deferred_exports(local_register_only):
+    app, _ = start_uploaded_review()
+    app.radio(key='manual_sample_method').set_value('randomized').run()
+    assert not app.exception
+    saved = app.session_state['review']
+    plan = saved.result.sampling_result
+    plans = saved.sampling_plans
+    summary = saved.result.summary
+    original = saved.result.original_data.copy(deep=True)
+    matching = saved.result.supplier_analysis.rows.copy(deep=True)
+    selected_positions = [position for verification in plan.sample for position in verification.rows.index]
+    seed, generated_at = plan.seed, plan.generated_at
+    assert seed is not None
+    assert not saved.downloads._bytes
+
+    # Native eager-tab clicks do not run Python. Ordinary reruns execute every
+    # tab and must not create new analysis, sampling or download snapshots.
+    with patch('src.ui_support.run_pipeline', side_effect=AssertionError('Unexpected reanalysis')), \
+            patch('src.ui_support.plan_random_sample', side_effect=AssertionError('Unexpected sample regeneration')), \
+            patch('src.supplier_matching.matcher.SupplierMatcher.match', side_effect=AssertionError('Unexpected rematch')), \
+            patch('src.output.report_generator._workbook', side_effect=AssertionError('No download requested')):
+        app.run()
+        assert not app.exception
+        app.button(key='control_analyzed').click().run()
+        assert not app.exception
+        app.button(key='home').click().run()
+        assert not app.exception
+        current = app.session_state['review']
+        assert current is saved
+        assert current.sampling_plans is plans
+        assert current.result.sampling_result is plan
+        assert current.result.summary is summary
+        assert plan.seed == seed and plan.generated_at == generated_at
+        assert [position for verification in plan.sample for position in verification.rows.index] == selected_positions
+        assert app.radio(key='manual_sample_method').value == 'randomized'
+        assert len([button for button in app.button if button.key == 'regenerate_manual_sample']) == 1
+        assert not saved.downloads._bytes
+    pd.testing.assert_frame_equal(saved.result.original_data, original)
+    pd.testing.assert_frame_equal(saved.result.supplier_analysis.rows, matching)
+
+
 @pytest.mark.parametrize('register_state', ['missing', 'unreadable'])
 def test_unavailable_register_keeps_review_availability_feedback(local_register_only, register_state):
     app = AppTest.from_file(str(APP), default_timeout=20).run()
@@ -187,6 +254,13 @@ def test_unavailable_register_keeps_review_availability_feedback(local_register_
     issues = app.session_state['review'].result.supplier_analysis.registry.issues
     assert [item.value for item in register_warnings(app).text] == list(issues)
     assert not register_warnings(app).proto.expanded
+    manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
+    name = 'oläsbart-register.xlsx' if register_state == 'unreadable' else 'Inget register'
+    assert [item.value for item in manual.text if item.value.startswith('Register för denna körning:')] == [
+        f'Register för denna körning: {name} (matchning ej tillgänglig)']
+    deviations = next(tab for tab in app.tabs if tab.label == 'Avvikelser och avtalsperioder')
+    assert 'Avtalsevidens saknas när leverantörsmatchningen är otillgänglig.' in [
+        item.value for item in deviations.caption]
 
 
 def test_invalid_invoice_replacement_restores_review_without_losing_register_date(local_register_only):
@@ -194,7 +268,7 @@ def test_invalid_invoice_replacement_restores_review_without_losing_register_dat
     app.file_uploader[0].set_value(('oläsbart.xlsx', b'not an Excel workbook', MIME)).run()
     next(button for button in app.button if button.label == 'Starta analys').click().run()
     assert not app.exception
-    assert not any(tab.label == 'Granskning' for tab in app.tabs)
+    assert not app.tabs
     assert [item.value for item in app.sidebar.error] == [
         'Fakturaunderlaget kunde inte läsas. Ladda upp en giltig Excel-fil (.xlsx) och försök igen.']
     assert not app.main.error

@@ -147,7 +147,7 @@ def test_ui_upload_status_summary_detail_and_refilter_keeps_registry():
     app.button[0].click().run()
     assert not app.exception
     assert [b.label.split('**')[1] for b in app.button if b.key and b.key.startswith('supplier_')] == ['6', '2', '1', '1', '2', '2']
-    table = next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[0]
+    table = next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning').dataframe[0]
     assert table.value['Matchningsresultat'].iloc[0] == 'Stark namnmatchning'
     assert table.value['Matchningsresultat'].iloc[1] == 'Osäker namnmatchning'
     states = app._tree.get_widget_states()
