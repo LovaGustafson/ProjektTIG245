@@ -126,8 +126,9 @@ def test_saved_plans_and_all_exports_share_the_recorded_evidence(review, monkeyp
                 sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
                 metadata = sheets['Urvalsmetod'].iloc[0]
                 if filename in REVIEW_SAMPLE_FILES:
-                    assert metadata['Antal valda rader'] == len(current.result.filtering.cleaned_data) // 20
-                    assert 'Urvalsbeslut' not in sheets
+                    assert metadata['Antal valda verifikationer'] <= 20
+                    assert sheets['Urvalsbeslut'].query("decision == 'SELECTED'").supplier_key.is_unique
+                    assert metadata['Antal valda rader'] == len(sheets['Granskning'])
                 else:
                     assert metadata['Antal valda verifikationer'] == len(plan.sample)
                     assert metadata['Genereringstidpunkt (UTC)'] == plan.generated_at

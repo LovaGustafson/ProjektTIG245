@@ -229,8 +229,9 @@ def test_saved_sampling_and_every_excel_export_preserve_selected_identity_and_sc
                 sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
                 metadata = sheets['Urvalsmetod'].iloc[0]
                 if filename in REVIEW_SAMPLE_FILES:
-                    assert metadata['Antal valda rader'] == len(result.filtering.cleaned_data) // 20
-                    assert 'Urvalsbeslut' not in sheets
+                    assert metadata['Antal valda verifikationer'] <= 20
+                    assert sheets['Urvalsbeslut'].query("decision == 'SELECTED'").supplier_key.is_unique
+                    assert metadata['Antal valda rader'] == len(sheets['Granskning'])
                 else:
                     assert metadata['Antal valda verifikationer'] == len(plan.sample)
                     assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint

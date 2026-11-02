@@ -1,15 +1,18 @@
 """First-time view stays concise while synthetic evidence remains inspectable."""
 from copy import deepcopy
+from datetime import date
 import json
 
 import pytest
 from streamlit.testing.v1 import AppTest
 
 from src.ui_support import analyze_upload
-from tests.test_feature_package import workbook, registry, settings
+from tests.test_feature_package import invoices, workbook, registry, settings
+from src.supplier_matching.contract_period import ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE
 from tests.test_ui_sampling import APP, population
 from tests.test_ui_ux import assert_same_analysis
 from tests.test_upload_panel import config  # Shared fixture disables any local default register.
+from tests.test_priority2 import rule, write_rules
 
 
 def visible_elements(block):
@@ -102,3 +105,90 @@ def test_manual_first_view_has_one_summary_and_audit_details_stay_available(conf
     assert app.session_state['review'] is current
     assert_same_analysis(before, current.result)
     assert not current.downloads._bytes
+
+
+@pytest.mark.parametrize('snapshot, invalid_date, unknown_count', [
+    (None, True, 3), (date(2026, 6, 1), True, 1), (date(2026, 6, 1), False, 0),
+])
+def test_supplier_first_view_separates_register_age_from_contract_periods(config, tmp_path, snapshot, invalid_date, unknown_count):
+    data = invoices(3)
+    if invalid_date:
+        data.loc[2, 'Verdatum'] = 'ogiltigt datum'
+    review = analyze_upload(workbook(data), registry_content=workbook(registry()),
+        registry_mode='uploaded', registry_snapshot_date=snapshot,
+        settings_path=settings(tmp_path), defer_downloads=True)
+    before = deepcopy(review.result)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state['review'] = review
+    app.run()
+    assert not app.exception
+    supplier = next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning')
+    text = visible_text(supplier)
+    assert 'En namnträff bekräftar inte juridisk identitet eller att köpet omfattas av avtal.' in text
+    assert 'Markera en rad för att se detaljer och eventuella valideringsfel.' in text
+    assert all(value not in text for value in (
+        'Matchningsscore är ett tekniskt mått', 'första registerkandidaten',
+        'Avtalsperioder vid verifikationsdatum', 'avtalsjämförelser',
+        '0 källrader', 'supplier_view_rules', 'Alla kvarvarande rader med ursprungliga',
+    ))
+    warnings = [e.value for e in visible_elements(supplier) if e.type == 'warning']
+    if unknown_count:
+        assert len(warnings) == 1
+        assert f'för {unknown_count} rader' in warnings[0]
+        assert 'registrets ålder' in warnings[0].lower()
+        assert 'kunde inte datumkontrolleras' not in warnings[0]
+        assert ('Registerutdragets datum är okänt' in warnings[0]) == (snapshot is None)
+        assert ('datumet i underlaget saknas eller är ogiltigt' in warnings[0]) == (snapshot is not None)
+    else:
+        assert not warnings
+    assert len([e for e in visible_elements(supplier) if e.type == 'dataframe']) == 1
+    assert [b.key for b in supplier.button if b.key.startswith('supplier_')] == [
+        'supplier_all', 'supplier_STRONG_MATCH', 'supplier_AMBIGUOUS_MATCH',
+        'supplier_NO_MATCH', 'supplier_SUPPLIER_NOT_IDENTIFIED', 'supplier_date_warning',
+    ]
+    help_section = next(e for e in supplier.expander if e.label == 'Så fungerar leverantörsmatchningen')
+    assert not help_section.proto.expanded
+    assert any('Matchningsscore är ett tekniskt mått' in c.value for c in help_section.caption)
+    assert any('första registerkandidaten' in c.value for c in help_section.caption)
+    counts = before.supplier_analysis.contracts.contract_period_result.value_counts()
+    assert [t.value for t in help_section.text] == [
+        f'{label}: {int(counts.get(label, 0))} avtalsjämförelser'
+        for label in (ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE)
+    ]
+    # An unknown extract date never makes otherwise usable contract dates unavailable.
+    assert counts.get(ACTIVE, 0) == (2 if invalid_date else 3)
+    assert counts.get(UNVERIFIABLE, 0) == int(invalid_date)
+    scope = next(e for e in supplier.expander if e.label == 'Om leverantörsöversikten')
+    assert not scope.proto.expanded
+    assert any('0 källrader' in c.value for c in scope.caption)
+    assert_same_analysis(before, review.result)
+    assert not review.downloads._bytes
+
+
+@pytest.mark.parametrize('conflict', [False, True])
+def test_supplier_scope_keeps_actual_exclusions_and_conflicts_visible(config, tmp_path, conflict):
+    path = settings(tmp_path)
+    rules = [rule()]
+    if conflict:
+        rules.append({**rule(), 'id': 'synthetic-conflict', 'classification': 'EXTERNAL'})
+    write_rules(path, rules)
+    review = analyze_upload(workbook(invoices(1).assign(Huvudtext='Synthetic AB Prelb 1')),
+                            registry_mode='disabled', settings_path=path, defer_downloads=True)
+    before = deepcopy(review.result)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state['review'] = review
+    app.run()
+    assert not app.exception
+    supplier = next(tab for tab in app.tabs if tab.label == 'Leverantörsmatchning')
+    text = visible_text(supplier)
+    if conflict:
+        assert 'Motstridiga leverantörsvyregler finns.' in text
+        assert 'Rader som inte räknas i leverantörsöversikten:' not in text
+    else:
+        assert 'Rader som inte räknas i leverantörsöversikten: 1.' in text
+        assert 'De finns kvar i granskningsunderlaget och exporterna.' in text
+    scope = next(e for e in supplier.expander if e.label == 'Om leverantörsöversikten')
+    assert not scope.proto.expanded
+    # Hiding the zero-state explanation never hides an occurrence from review.
+    assert len(supplier.dataframe[0].value) == 1
+    assert_same_analysis(before, review.result)

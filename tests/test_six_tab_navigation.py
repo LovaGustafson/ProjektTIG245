@@ -23,7 +23,7 @@ DOWNLOADS = {
     'bortfiltrerade.xlsx': 'Bortfiltrerade',
     'samlad_kontrollfil.xlsx': 'Samlad kontrollfil',
     'flagged_invoices.xlsx': 'Hämta avvikelserapport',
-    'manual_sample.xlsx': 'Hämta manuellt stickprov',
+    'manual_sample.xlsx': 'Hämta stickprovet från stickprovsfliken',
     'uncertain_suppliers.xlsx': 'Hämta osäkra namnmatchningar',
     'manual_sample_every_20th.xlsx': 'Hämta manuellt stickprov (var 20:e)',
     'manual_sample_randomized.xlsx': 'Hämta manuellt stickprov (randomiserat)',

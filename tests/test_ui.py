@@ -102,7 +102,7 @@ def test_streamlit_result_screen():
     assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
         'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
-        'Hämta manuellt stickprov', 'Hämta osäkra namnmatchningar',
+        'Hämta stickprovet från stickprovsfliken', 'Hämta osäkra namnmatchningar',
         'Hämta manuellt stickprov (var 20:e)', 'Hämta manuellt stickprov (randomiserat)']
 
 

@@ -38,6 +38,11 @@ evidence, target/actual counts and shortfall reasons are included in the existin
 exports. Further retention/approval requirements remain open; they do not block
 these explicitly confirmed sampling changes.
 
+The 2026-11-02 follow-up explicitly corrects the two named download alternatives
+to verification-level, supplier-unique samples of at most 20, replacing their
+initial raw-row draws. Their size/identity rules are confirmed in M5 and
+PROJECT_SPEC section 14; further retention/approval requirements remain open.
+
 ## Q3 — Source-occurrence traceability
 
 Related requirement: M6

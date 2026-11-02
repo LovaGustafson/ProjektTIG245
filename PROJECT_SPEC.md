@@ -414,6 +414,13 @@ Pending Q12, `contract_period.end_date_field` and `inclusive_boundaries` remain 
 
 The 2026-09-30 priority-2 request adds **one selected verification per supplier** to the nominal every-20th method. `src/sampling/manual_sample.py` retains `manual_sample_interval: 20`, the builder's first-appearance order, complete groups and analysis before sampling. Target size is floor(grouped population / interval); nominal positions remain 20, 40, 60, etc. Each slot scans forward from its nominal position or after the last examined candidate, whichever is later, until a usable unique supplier is found. This systematic method has no randomization, wraparound, revisiting passed positions or duplicate backfilling. The sample can therefore be smaller even when earlier, unvisited positions contain other suppliers. The 2026-10-12 product decision explicitly preserves this method and its population-dependent target as the default.
 
+`plan_manual_sample` additionally accepts optional `max_size`, used only by the
+two corrected download alternatives (section 14). It caps the target before
+selection and quota evaluation and limits nominal slots accordingly. The default
+remains uncapped, preserving pipeline/CLI and active-sample behavior. Truncating
+an already-selected sample is insufficient because the internal quota depends on
+target and actual sample size.
+
 Per source row, an existing `STRONG_MATCH` supplies `org:<matched_organization_number>`; since Phase 3C this is always a technically usable organization number. Otherwise the user's explicit fallback confirmation permits `name:<normalize_supplier(extract_supplier(header_text))>`, including ambiguous/no-match/unavailable register cases. This reuses existing Unicode, case, whitespace, punctuation and equivalent legal-form normalization, never Motp, fuzzy regrouping or candidate selection. A name key is not proof of legal identity. Every row in a verification must have a key and the group must contain exactly one distinct key; missing or multiple identities remain outside the sample with reasons. Different strong aliases sharing an organization number share one key. Both a previously selected key and a previously selected normalized extracted name prevent reselection. Ambiguous supplier-match statuses themselves remain unchanged.
 
 `plan_manual_sample` returns the copied sample, target size, one decision per population verification and identity evidence per source occurrence. Decisions distinguish selected, repeated supplier, unusable identity and not examined according to the order; they retain nominal/actual positions and the previously selected position for duplicates. `create_manual_sample` remains a list-returning convenience wrapper. `PipelineResult.sampling_result` preserves the plan, and `sampling_evidence` now comes from actual selections, including replacements, rather than a modulo calculation. UI, CLI and export explain shortfalls. No source occurrence is deleted or modified; missing/multiple supplier identities remain in the complete review population. Sampling stays independent of flags and of supplier-view classification. For systematic sampling, fewer than 20 groups still gives an empty sample. Q2 remains open for further retention/approval requirements.
@@ -516,30 +523,44 @@ Each retained source row receives classification evidence, rule IDs, fields, con
 
 Streamlit also prepares `granskning.xlsx` (`Granskning`), `bortfiltrerade.xlsx` (`Bortfiltrerade`) and `samlad_kontrollfil.xlsx` (both tables plus `Sammanfattning`). These tables retain source headers; excluded rows receive an extra reason column. Customer-facing copies remove numbered Slutk markers from Huvudtext as described below. The UI offers these three downloads plus the flagged, sample and uncertain-supplier workbooks. All use the same workbook serializer. The UI generates only the requested workbook on download, using its run's result snapshot without rereading source files/configuration or repeating analysis. Temporary export files are removed after their bytes are collected. New analyses, including refiltering, create a new snapshot/cache; caches are not shared between runs or sessions.
 
-The 2026-11-02 M5/M6 export request additionally provides two independent **row**
-downloads under Export: `Hämta manuellt stickprov (var 20:e)`
-(`manual_sample_every_20th.xlsx`) and `Hämta manuellt stickprov (randomiserat)`
-(`manual_sample_randomized.xlsx`). Both use exactly the full `Kvar för granskning`
-population, including retained invalid/ungrouped rows, before temporary view filters.
-Ordering is the parsed source-file order after active exclusions, without sorting
-by business identifiers, dates, matching or flags. One-based positions 20, 40, 60,
-etc. are selected literally, without supplier replacement. The random method uses
-local `random.Random(42).sample(range(n), n // 20)` without replacement, then sorts
-selected offsets into population order for export. Both sizes are floor(n / 20);
-below 20 rows both downloads are empty workbooks retaining the review headers.
-Duplicate/missing business identifiers never merge occurrences. The `Granskning`
-sheet has the same columns, enrichment and presentation as `granskning.xlsx`.
-`Urvalsmetod` records row unit, population, ordering, count rule, target/actual
-counts, seed as text, generator, Python version and `review-rows-v1`;
-`Urvalspopulation` records every eligible source position and selection flag;
-`Urvalspositioner` records selected population/source positions and Excel output
-rows. Existing `Källspårning`/`Källinformation` identify exact source occurrences,
-source workbook hash, sheet and original Excel row. Supplier evidence is scoped to
-the selected rows. `Körningsöversikt` remains whole-analysis context, explicitly
-distinguished from the row sample. These downloads share the completed-run snapshot
-and lazy serialization/cache; refiltering rebuilds the population. They do not
-change automatic analysis, existing verification-level sampling, its method/seed
-controls or `manual_sample.xlsx`.
+The latest 2026-11-02 M5/M6 correction replaces the initial raw-row draws behind
+`Hämta manuellt stickprov (var 20:e)` (`manual_sample_every_20th.xlsx`) and
+`Hämta manuellt stickprov (randomiserat)` (`manual_sample_randomized.xlsx`). Both
+now choose complete **verifications**, at most 20 and at most one per supplier,
+from the pipeline's saved grouped population after analysis and base exclusions.
+`src/sampling/review_sample.py` reuses the existing identity, uniqueness,
+classification/quota and shortfall logic. Systematic uses interval 20, fixed
+nominal positions, deterministic forward replacement and target
+min(grouped population // 20, 20). Randomized keeps the established target 20 and
+uses local `random.Random(42).shuffle` over the full grouped population. Missing
+or multiple identities remain unusable; strong organization identities and
+normalized extracted-name fallback follow section 13. There is no duplicate
+backfilling, risk weighting, fuzzy supplier regrouping or source deduplication.
+
+The first worksheet, `Stickprov`, has one row per selected verification with its
+supplier name(s) and bookkeeping-row count, so at most 20 rows appear there.
+`Granskning` retains exactly the existing review columns, enrichment and
+presentation for every source row belonging to the selected complete groups;
+it can legitimately exceed 20 bookkeeping rows. Empty exports retain both
+headers. Supplier evidence remains scoped to the selected source occurrences.
+`Urvalsmetod` records method, selection unit, maximum 20, target/actual group and
+row counts, interval/seed/generator/version, fingerprints and shortfall reasons.
+`Urvalsbeslut`, `Urvalsidentiteter` and classification/rule sheets describe this
+export's own plan. `Urvalspopulation` links every retained source occurrence to
+its group, eligibility, selection flag and recorded reason; ungrouped occurrences
+are explicitly outside the selection population rather than silently lost.
+`Urvalspositioner` links selected source positions to their `Granskning` output
+row and `Stickprov` summary row. `Källspårning`/`Källinformation` retain source hash,
+filename, sheet and Excel-row linkage. `Körningsöversikt` retains full-run counts
+but uses this export's sample counts/interval. Lazy per-result serialization and
+byte caching remain; no live files/configuration are reread, and refiltering
+creates a new snapshot. Temporary view filters cannot affect either draw.
+`UploadResult.sample_export_version` also invalidates the two obsolete row-sample
+workbooks in sessions left open across this correction. Migration preserves the
+saved result snapshot, other cached workbooks and sampling plans, without reading
+source/configuration files or rerunning analysis.
+`manual_sample.xlsx` is explicitly labelled as the sample from the sampling tab;
+its existing algorithm and the automatic analysis are unchanged.
 
 The confirmed 2026-09-29 presentation rule hides numbered `Slutk` markers in `Huvudtext`/`header_text` and extracted `supplier_text_raw` in all UI tables/details and Excel reports, including excluded rows, verification context and manual samples. `src/presentation.py` applies the existing `normalize_header_text` only to values containing a numbered marker, on presentation copies. `Prelb`, standalone `Slutk`, `Slutkund AB` and `Slutk123abc` remain unchanged. Original headers remain in the source file/upload bytes and internal original, standardized, filtered, grouped and sampled tables; matching evidence and source-occurrence linkage remain intact. This does not change supplier extraction/matching, filtering, grouping, ordering or sampling.
 
@@ -652,6 +673,26 @@ suppliers when a nonempty sample lacks active internal rules or includes
 unclassified suppliers. Filter panels show counts and active-filter captions
 only when a filter is active. All evidence is still rendered on reruns; collapse
 does not defer computation, change widgets, regenerate a sample or alter exports.
+
+The 2026-11-02 supplier-view follow-up keeps the existing matching cards and
+source-row table, with one short introductory explanation and the limit that a
+name hit confirms neither legal identity nor purchase-to-contract applicability.
+`Så fungerar leverantörsmatchningen` holds the complete name/organization-origin
+explanation, score interpretation, unchanged candidate-order explanation,
+retained-invalid-row note, snapshot date and whole-run contract-period summary.
+Contract comparisons retain all four result counts, including zeros; their
+dedicated tab and row evidence are unchanged. `UNKNOWN` freshness warnings now
+say that **register age** could not be checked: an unknown extract date and an
+invalid/missing source date have distinct messages. This changes wording only;
+it does not turn missing extract dates into unavailable contract periods.
+Score-column help remains available without repeating its explanation below
+every table. A single row-selection instruction precedes the table.
+`Om leverantörsöversikten` keeps all view-classification/source/reason evidence
+and the zero-exclusion explanation collapsed. Nonzero excluded counts remain
+visible as rows omitted from overview counts, with preserved review/export
+occurrences; conflicting rules retain their visible warning. No match, ranking,
+score, source linkage, population, classification, sampling, date or export
+calculation changes.
 
 The overview explains the audited units: the sample population is `len(verifications)` after routing unusable IDs and grouping; strong supplier hits count retained rows with `STRONG_MATCH`, including any ungrouped rows. These are intentionally different units, not alternative counts of the same population. Contract counts remain comparisons: a row without a candidate has no contract comparison and is explained under supplier matching, not given a fabricated `NOT_CHECKED` contract result. `NOT_CHECKED` contract comparisons remain separate from dates actually outside a period and do not imply missing or invalid contracts. No filtering, matching, date policy, detection, grouping, sampling, summary calculation or export behavior changes in this update.
 

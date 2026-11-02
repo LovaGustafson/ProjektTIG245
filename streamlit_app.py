@@ -11,7 +11,7 @@ from src.output.report_generator import review_tables, review_summary
 from src.presentation import SOURCE_NAMES, check_message
 from src.ui_support import analyze_upload, flagged_table, validation_table, display_dataframe
 from src.ui_support import filter_details, review_row_detail, REVIEW_EXPLANATION
-from src.ui_support import select_sample_method
+from src.ui_support import select_sample_method, refresh_sample_downloads
 from src.sampling.manual_sample import SAMPLING_METHODS
 from src.sampling.classification import CLASSIFICATION_LABELS, QUOTA_EXPLANATION, NO_INTERNAL_RULES
 from src.ui_filter_panel import filter_panel, clear_ui_filters
@@ -63,7 +63,7 @@ REPORT_LABELS = {
     'manual_sample.xlsx': (
         'Manuellt stickprov',
         'Verifikationsraderna i det stickprov som valts ut för manuell granskning.',
-        'Hämta manuellt stickprov', 'secondary',
+        'Hämta stickprovet från stickprovsfliken', 'secondary',
     ),
     'uncertain_suppliers.xlsx': (
         'Osäkra namnmatchningar',
@@ -179,6 +179,9 @@ def show_validation(errors):
 
 
 def show_reports(review):
+    updated = refresh_sample_downloads(review)
+    if updated is not review:
+        st.session_state['review'] = review = updated
     st.subheader('Exportera granskningsunderlag')
     st.caption('Varje nedladdning skapar en ny Excel-fil. Originalfilen förändras inte.')
     labels = {'granskning.xlsx': 'Kvar för granskning',
@@ -195,14 +198,12 @@ def show_reports(review):
                                on_click='ignore',
                                file_name=filename,
                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    st.subheader('Manuella radurval för nedladdning')
-    st.caption('Båda alternativen använder Kvar för granskning i källfilens ordning efter exkluderingar. '
-               'Antalet valda rader är antalet kvarvarande rader delat med 20, avrundat nedåt. '
-               'Tillfälliga vyfilter påverkar inte urvalen. '
-               'Var 20:e väljer positionerna 20, 40, 60 osv. Randomiserat väljer samma antal utan '
-               'återläggning med fast seed 42. Färre än 20 rader ger ett tomt urval. '
-               'Varje vald rad exporteras separat; övriga rader i samma verifikation följer inte automatiskt med. '
-               'Det befintliga verifikationsurvalet visas under Manuellt stickprov.')
+    st.subheader('Manuella stickprov – högst 20 verifikationer')
+    st.caption('Båda alternativen väljer högst en verifikation per leverantör enligt de befintliga '
+               'leverantörsreglerna. Var 20:e utgår från verifikationernas ordning i underlaget och '
+               'går framåt när en leverantör redan valts. Randomiserat väljer upp till 20 med fast seed 42. '
+               'Alla bokföringsrader i varje vald verifikation följer med; filen kan därför ha fler än 20 rader. '
+               'Om för få leverantörer kan väljas redovisas orsakerna i exporten. Tillfälliga tabellfilter påverkar inte urvalet.')
     for filename, label in (
         ('manual_sample_every_20th.xlsx', 'Hämta manuellt stickprov (var 20:e)'),
         ('manual_sample_randomized.xlsx', 'Hämta manuellt stickprov (randomiserat)'),
@@ -249,8 +250,6 @@ def show_result(review):
 
 def show_supplier_matching(result, kept):
     show_supplier_summary(result.supplier_analysis, result.supplier_view)
-    st.caption('Alla kvarvarande rader med ursprungliga kolumnnamn och värden. '
-               'Även rader med valideringsfel finns kvar för granskning.')
     show_review_table(result, kept, key='review_rows')
     show_supplier_scope(result)
 
@@ -416,16 +415,12 @@ def show_review_table(result, kept, *, key):
     column_order = match_columns + [name for name in kept.columns if name not in match_columns]
     score_column = match_columns[3] if len(match_columns) == 5 else None
     filtered = filter_panel(kept, view=key, selection_key=key)
+    st.caption('Markera en rad för att se detaljer och eventuella valideringsfel.')
     selection = st.dataframe(display_dataframe(filtered.data), hide_index=True, width='stretch',
                              key=key, on_select='rerun', selection_mode='single-row',
                              column_order=column_order,
                              column_config={score_column: st.column_config.NumberColumn(
                                  'Matchningsscore', format='%.6f', help=SCORE_EXPLANATION)} if score_column else {})
-    if result.supplier_analysis and result.supplier_analysis.registry.available:
-        st.caption(SCORE_EXPLANATION)
-        st.caption('Vid osäker matchning visas den första registerkandidaten i backendens ordning, '
-                   'utan att någon leverantör har valts. Alla kandidater och deras score finns i raddetaljerna.')
-    st.caption('Markera en rad i tabellen för att visa radens uppgifter och valideringsvarningar.')
     if selection.selection.rows and selection.selection.rows[0] < len(filtered.positions):
         source_position = kept.index[filtered.positions[selection.selection.rows[0]]]
         show_review_row(result, result.filtering.cleaned_data.index.get_loc(source_position))

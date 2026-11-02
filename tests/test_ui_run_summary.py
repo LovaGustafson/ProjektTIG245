@@ -44,7 +44,7 @@ def test_separated_renderers_preserve_their_existing_content_only(renderer, head
                                      'chart_contracts', 'chart_sample')
                      if any(f':{key}:event:' in chart.proto.id for chart in app.get('vega_lite_chart'))}
     assert actual_charts == chart_keys
-    assert not any(item.label.startswith('Vyavgränsning') for item in app.expander)
+    assert not any(item.label == 'Om leverantörsöversikten' for item in app.expander)
     assert not review.downloads._bytes
     assert review.result.sampling_result is plan
     if renderer == 'show_deviations_and_contracts':

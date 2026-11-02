@@ -176,6 +176,7 @@ def plan_manual_sample(
     interval: int | None = None,
     supplier_analysis=None,
     classification_rules=None,
+    max_size: int | None = None,
 ) -> SamplingResult:
     """Try interval, 2*interval, ...; replace ineligible candidates by scanning forward.
 
@@ -185,7 +186,8 @@ def plan_manual_sample(
     src/pipeline.py completes detection for all eligible verifications first.
     The iterable is fully consumed before selecting any verifications.
 
-    The target is floor(population / interval). Each slot starts at its original
+    The target is floor(population / interval), optionally capped by max_size.
+    The default preserves existing pipeline behavior. Each slot starts at its original
     interval position or after the last examined candidate, whichever is later.
     There is no wraparound, reordering, randomization or duplicate backfilling.
     Strong matches use existing organization numbers; other rows use the exact
@@ -205,15 +207,19 @@ def plan_manual_sample(
     interval = load_sample_interval(settings_path) if interval is None else interval
     if type(interval) is not int or interval <= 0:
         raise ValueError("manual_sample_interval must be a positive integer")
+    if max_size is not None and (type(max_size) is not int or max_size <= 0):
+        raise ValueError('max_size must be a positive integer')
 
     rules = load_sampling_rules(settings_path) if classification_rules is None else sampling_rules(classification_rules)
     verifications, identities, decisions, names_by_position, classified = _prepare_candidates(
         analyzed_verifications, supplier_analysis, rules)
     chosen, seen_keys, seen_names = [], {}, {}
     target = len(verifications) // interval
+    if max_size is not None:
+        target = min(target, max_size)
     internal_count = 0
     cursor = 0
-    for nominal in range(interval, len(verifications) + 1, interval):
+    for nominal in range(interval, (target + 1) * interval, interval):
         cursor = max(nominal, cursor + 1)
         while cursor <= len(verifications):
             decision = decisions[cursor - 1]

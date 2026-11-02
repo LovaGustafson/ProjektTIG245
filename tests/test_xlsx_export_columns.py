@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from src.output.report_generator import XLSX_EXCLUDED_COLUMNS, REVIEW_SAMPLE_FILES, _workbook
-from src.sampling.review_sample import review_sample_positions
+from src.sampling.review_sample import plan_review_sample
 from src.pipeline import export_pipeline_result
 from src.ui_support import analyze_upload, select_sample_method
 from tests.synthetic_org import org
@@ -65,7 +65,9 @@ def expected_positions(result):
         'manual_sample.xlsx': sample, 'uncertain_suppliers.xlsx': uncertain,
         'excluded_data.xlsx': excluded, 'granskning.xlsx': kept,
         'bortfiltrerade.xlsx': excluded, 'samlad_kontrollfil.xlsx': kept + excluded,
-        **{filename: [kept[i] for i in review_sample_positions(len(kept), method)]
+        **{filename: [p for v in plan_review_sample(result.verifications, method,
+                     supplier_analysis=result.supplier_analysis,
+                     classification_rules=result.sampling_result.classification_rules).sample for p in v.rows.index]
            for filename, method in REVIEW_SAMPLE_FILES.items()},
     }
 

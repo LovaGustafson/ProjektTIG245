@@ -76,7 +76,7 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
         'bortfiltrerade.xlsx': 'Bortfiltrerade',
         'samlad_kontrollfil.xlsx': 'Samlad kontrollfil',
         'flagged_invoices.xlsx': 'Hämta avvikelserapport',
-        'manual_sample.xlsx': 'Hämta manuellt stickprov',
+        'manual_sample.xlsx': 'Hämta stickprovet från stickprovsfliken',
         'uncertain_suppliers.xlsx': 'Hämta osäkra namnmatchningar',
     }
     for index, filename in enumerate(download_labels):
