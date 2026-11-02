@@ -43,7 +43,7 @@ def start(review):
 
 
 def active_registers(review):
-    return [t.value for t in review.text if t.value.startswith('Aktivt avtalsregister:')]
+    return [t.value for t in review.text if t.value.startswith('Standardregister:')]
 
 
 @pytest.mark.parametrize('mode', ['unconfigured', 'missing', 'directory'])
@@ -53,14 +53,14 @@ def test_missing_default_has_upload_instruction_without_filename_or_date(config,
     config['registry_snapshot_date'] = '2026-08-31'  # Must remain invisible without a register.
     review = app()
     assert [u.label for u in review.file_uploader] == [
-        'Här laddar du upp fakturaunderlaget', 'Här laddar du upp koncernavtalsregistret']
+        'Fakturaunderlag', 'Koncernavtalsregister (valfritt)']
     assert all(list(u.proto.type) == ['.xlsx'] for u in review.file_uploader)
     assert all(not u.proto.multiple_files for u in review.file_uploader)
     assert not review.date_input
     assert not any('avtalsregister:' in t.value.lower() for t in review.text)
     assert [i.value for i in review.info] == [
-        'Ladda upp ett koncernavtalsregister för att genomföra leverantörsmatchning.']
-    assert 'I detta verktyg används Excel-filer (.xlsx)' in [c.value for c in review.caption]
+        'Utan avtalsregister görs ingen leverantörsmatchning.']
+    assert 'Excel (.xlsx) · Max 200 MB per fil' in [c.value for c in review.caption]
     assert 'Det första kalkylbladet läses. Alla rader behandlas.' == review.file_uploader[0].proto.help
     assert next(b for b in review.button if b.label == 'Starta analys').disabled
 
@@ -73,7 +73,7 @@ def test_swedish_size_caption_uses_actual_streamlit_limit(config, monkeypatch, l
     monkeypatch.setattr(st.config, 'get_option', get_option)
     monkeypatch.setattr(st, 'get_option', get_option)
     review = app()
-    assert [c.value for c in review.caption].count(f'Max {limit} MB per fil') == 2
+    assert [c.value for c in review.caption].count(f'Excel (.xlsx) · Max {limit} MB per fil') == 1
     assert all(u.proto.max_upload_size_mb == limit for u in review.file_uploader)
 
 
@@ -92,7 +92,7 @@ def test_metadata_css_is_scoped_to_upload_panels_and_keeps_controls(config):
         panel = next(p for p in review.get('flex_container') if p.proto.id.endswith('-' + key))
         assert len(panel.file_uploader) == 1
         assert not panel.file_uploader[0].proto.disabled
-        assert [c.value for c in panel.caption] == ['Max 200 MB per fil']
+        assert not panel.caption
     # AppTest does not render CSS. Catch a renamed frontend hook on upgrades;
     # interaction is covered by the upload/replacement tests below.
     static = Path(st.__file__).parent / 'static'
@@ -125,9 +125,11 @@ def test_uploaded_register_date_changes_only_freshness_and_preserves_exports(con
     review.file_uploader[0].set_value(('underlag.xlsx', content, MIME)).run()
     review.file_uploader[1].set_value(('koncernavtal.xlsx', register_content, MIME)).run()
     assert not review.exception
-    assert active_registers(review) == ['Aktivt avtalsregister: koncernavtal.xlsx']
+    assert active_registers(review) == []
+    assert review.file_uploader[1].value.name == 'koncernavtal.xlsx'
     assert review.date_input[0].value is None
-    assert any('Utan datum kan registeråldern inte kontrolleras.' in c.value for c in review.caption)
+    assert 'registeråldern inte kontrolleras' in review.date_input[0].proto.help
+    assert not next(e for e in review.expander if e.label == 'Registerdatum (valfritt)').proto.expanded
     review.date_input[0].set_value(date(2026, 6, 1)).run()
     before = start(review)
     first = before.result.supplier_analysis
@@ -155,7 +157,7 @@ def test_known_default_date_is_preserved_but_not_inherited_by_replacement(config
     config.update(default_registry_path=str(path), default_registry_name='Visningsnamn',
                   registry_snapshot_date='2026-06-01')
     review = app()
-    assert active_registers(review) == ['Aktivt avtalsregister: standard.xlsx']
+    assert active_registers(review) == ['Standardregister: standard.xlsx']
     assert review.date_input[0].value == date(2026, 6, 1)
     review.date_input[0].set_value(date(2026, 6, 2)).run()
     review.file_uploader[1].set_value(('eget.xlsx', workbook(registry('Egen Leverantör AB')), MIME)).run()
@@ -185,7 +187,7 @@ def test_replacement_retains_each_date_and_old_button_state_cannot_disable_defau
     review.session_state['registry_upload_version'] = 9
     review.run()
     assert not review.exception
-    assert active_registers(review) == ['Aktivt avtalsregister: standard.xlsx']
+    assert active_registers(review) == ['Standardregister: standard.xlsx']
     assert not {'Ta bort register', 'Återställ standardregister'} & {b.label for b in review.button}
     review.file_uploader[0].set_value(('underlag.xlsx', workbook(invoices()), MIME)).run()
     review.file_uploader[1].set_value(('ett.xlsx', first, MIME)).run()
@@ -193,7 +195,8 @@ def test_replacement_retains_each_date_and_old_button_state_cannot_disable_defau
     original = start(review)
     review.file_uploader[1].set_value(('två.xlsx', second, MIME)).run()
     assert 'review' not in review.session_state
-    assert active_registers(review) == ['Aktivt avtalsregister: två.xlsx']
+    assert active_registers(review) == []
+    assert review.file_uploader[1].value.name == 'två.xlsx'
     assert review.date_input[0].value is None
     review.date_input[0].set_value(date(2026, 7, 1)).run()
     review.file_uploader[1].set_value(('ett.xlsx', first, MIME)).run()
@@ -270,31 +273,30 @@ def test_first_time_introduction_and_upload_layout(config):
     assert ('Resultatet är ett stöd för granskning, inte ett godkännande av fakturorna.'
             in [c.value for c in review.caption])
     assert [u.label for u in review.sidebar.file_uploader] == [
-        'Här laddar du upp fakturaunderlaget', 'Här laddar du upp koncernavtalsregistret']
+        'Fakturaunderlag', 'Koncernavtalsregister (valfritt)']
     assert not review.main.file_uploader
     sidebar_text = '\n'.join(e.value for kind in ('caption', 'text', 'markdown', 'subheader')
                              for e in review.sidebar.get(kind))
     assert all(f'Steg {i}' not in sidebar_text for i in (1, 2, 3))
 
 
-def test_invoice_feedback_distinguishes_upload_from_completed_validation(config):
+def test_valid_invoice_uses_native_filename_without_repeated_status_messages(config):
     content = workbook(invoices(2))
     review = app()
     review.file_uploader[0].set_value(('mitt-underlag.xlsx', content, MIME)).run()
-    assert [t.value for t in review.sidebar.text] == ['Uppladdat fakturaunderlag: mitt-underlag.xlsx']
-    assert 'Filen kontrolleras när du väljer Starta analys.' in [c.value for c in review.sidebar.caption]
-    success = 'Filen har kontrollerats utan valideringsfel. Du kan fortsätta med granskningen.'
-    assert success not in [c.value for c in review.sidebar.caption]
+    assert not review.sidebar.text
+    assert review.file_uploader[0].value.name == 'mitt-underlag.xlsx'
+    assert 'Filen kontrolleras när du väljer Starta analys.' not in [c.value for c in review.sidebar.caption]
     assert not review.sidebar.success
     result = start(review)
     assert result.source_content == content
-    assert success in [c.value for c in review.sidebar.caption]
+    assert not any('utan valideringsfel' in c.value for c in review.sidebar.caption)
     assert 'Filen kontrolleras när du väljer Starta analys.' not in [c.value for c in review.sidebar.caption]
     assert not review.sidebar.warning
     assert not review.sidebar.error
     assert not review.sidebar.success
     review.run()
-    assert success in [c.value for c in review.sidebar.caption]
+    assert not any('utan valideringsfel' in c.value for c in review.sidebar.caption)
 
 
 @pytest.mark.parametrize('fault', ['row', 'schema'])
@@ -346,9 +348,9 @@ def test_corrupt_invoice_feedback_survives_rerun_and_replacement_clears_it(confi
     assert [e.value for e in review.sidebar.error] == [expected]
     review.file_uploader[0].set_value(('rätt.xlsx', workbook(invoices()), MIME)).run()
     assert not review.sidebar.error
-    assert 'Filen kontrolleras när du väljer Starta analys.' in [c.value for c in review.sidebar.caption]
+    assert 'Filen kontrolleras när du väljer Starta analys.' not in [c.value for c in review.sidebar.caption]
     start(review)
-    assert any('utan valideringsfel' in c.value for c in review.sidebar.caption)
+    assert not review.sidebar.error and not review.sidebar.warning
 
 
 def test_invoice_replacement_clears_previous_validation_feedback(config):
@@ -359,8 +361,9 @@ def test_invoice_replacement_clears_previous_validation_feedback(config):
     original = start(review)
     review.file_uploader[0].set_value(('andra.xlsx', second, MIME)).run()
     assert 'review' not in review.session_state
-    assert [t.value for t in review.sidebar.text] == ['Uppladdat fakturaunderlag: andra.xlsx']
-    assert 'Filen kontrolleras när du väljer Starta analys.' in [c.value for c in review.sidebar.caption]
+    assert not review.sidebar.text
+    assert review.file_uploader[0].value.name == 'andra.xlsx'
+    assert 'Filen kontrolleras när du väljer Starta analys.' not in [c.value for c in review.sidebar.caption]
     assert not any('utan valideringsfel' in c.value for c in review.sidebar.caption)
     replacement = start(review)
     assert replacement.source_content == second
@@ -391,12 +394,10 @@ def test_register_feedback_explains_validation_and_use_without_false_assurance(c
     review = app()
     review.file_uploader[1].set_value(('aktuellt-register.xlsx', workbook(data), MIME)).run()
     assert not review.exception
-    assert active_registers(review) == ['Aktivt avtalsregister: aktuellt-register.xlsx']
-    expected = (
-        'Registret kan användas för att matcha leverantörsnamn, men kontrollen visar '
-        'uppgifter som behöver granskas. Se registervarningarna i resultatet.' if has_issues else
-        'Registret har kontrollerats och används för att matcha leverantörsnamn.')
-    assert expected in [c.value for c in review.sidebar.caption]
+    assert active_registers(review) == []
+    assert review.file_uploader[1].value.name == 'aktuellt-register.xlsx'
+    expected = 'Registervarningar finns under Detaljer → Kontroller → Registervarningar.'
+    assert (expected in [c.value for c in review.sidebar.caption]) == has_issues
     assert not review.sidebar.success
     assert not review.sidebar.warning
     assert review.date_input[0].value is None

@@ -9,7 +9,7 @@ from threading import Lock
 import pandas as pd
 import pyarrow as pa
 
-from src.output.report_generator import review_workbooks
+from src.output.report_generator import review_workbooks, REVIEW_SAMPLE_FILES
 from src.presentation import context_fields, validation_records, validation_message
 from src.presentation import customer_facing_rows, customer_facing_value
 from src.pipeline import PipelineResult, run_pipeline, export_pipeline_result
@@ -72,8 +72,8 @@ class DeferredDownloads(Mapping):
     """
     FILENAMES = ('cleaned_data.xlsx', 'flagged_invoices.xlsx', 'manual_sample.xlsx',
                  'uncertain_suppliers.xlsx', 'excluded_data.xlsx', 'granskning.xlsx',
-                 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx')
-    REVIEW_FILES = ('granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx')
+                 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx', *REVIEW_SAMPLE_FILES)
+    REVIEW_FILES = ('granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx', *REVIEW_SAMPLE_FILES)
 
     def __init__(self, result):
         self._result = deepcopy(result)

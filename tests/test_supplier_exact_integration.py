@@ -10,7 +10,7 @@ import yaml
 from streamlit.testing.v1 import AppTest
 
 from src.ingestion.contract_reader import registry_from_frame
-from src.output.report_generator import XLSX_EXCLUDED_COLUMNS
+from src.output.report_generator import XLSX_EXCLUDED_COLUMNS, REVIEW_SAMPLE_FILES
 from src.supplier_matching.analysis import analyze_suppliers, ROW_FIELDS, CANDIDATE_FIELDS, CONTRACT_COLUMNS
 from src.supplier_matching.matcher import SupplierMatcher
 from src.ui_supplier_matches import simple_match_rows, candidate_summary
@@ -228,9 +228,13 @@ def test_saved_sampling_and_every_excel_export_preserve_selected_identity_and_sc
             for filename in current.downloads:
                 sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
                 metadata = sheets['Urvalsmetod'].iloc[0]
-                assert metadata['Antal valda verifikationer'] == len(plan.sample)
-                assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
-                assert sheets['Urvalsbeslut'].decision.tolist() == plan.decisions.decision.tolist()
+                if filename in REVIEW_SAMPLE_FILES:
+                    assert metadata['Antal valda rader'] == len(result.filtering.cleaned_data) // 20
+                    assert 'Urvalsbeslut' not in sheets
+                else:
+                    assert metadata['Antal valda verifikationer'] == len(plan.sample)
+                    assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
+                    assert sheets['Urvalsbeslut'].decision.tolist() == plan.decisions.decision.tolist()
                 if 'Leverantörsmatchning' in sheets:
                     assert list(sheets['Leverantörsmatchning'].columns) == [
                         field for field in ROW_FIELDS if field not in XLSX_EXCLUDED_COLUMNS]

@@ -23,6 +23,7 @@ from src.supplier_matching.extraction import normalize_header_text
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.sampling.manual_sample import SAMPLING_METHODS
 from src.sampling.classification import RULE_COLUMNS
+from src.sampling.review_sample import REVIEW_SAMPLE_INTERVAL, REVIEW_SAMPLE_SEED, review_sample_positions
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -34,6 +35,10 @@ XLSX_EXCLUDED_COLUMNS = frozenset({
     'registry_date_warning', 'registry_date_check', 'registry_date_message',
     'supplier_match_method',
 })
+REVIEW_SAMPLE_FILES = {
+    'manual_sample_every_20th.xlsx': 'systematic',
+    'manual_sample_randomized.xlsx': 'randomized',
+}
 
 
 def _xlsx_columns(data: pd.DataFrame) -> pd.DataFrame:
@@ -318,6 +323,41 @@ def review_summary(original_data, filtering):
     }
 
 
+def _review_sample_workbook(review, method, *, supplier_analysis, run_summary, source_context):
+    """Serialize a row sample with the same columns as granskning.xlsx."""
+    positions = review_sample_positions(len(review), method)
+    rows = review.iloc[positions].copy(deep=True)
+    population = pd.DataFrame({
+        'population_position': range(1, len(review) + 1),
+        'source_row_position': list(review.index),
+        'selected': pd.RangeIndex(len(review)).isin(positions),
+    })
+    selected = population.iloc[positions].copy(deep=True)
+    selected['export_row'] = range(2, len(rows) + 2)
+    audit = audit_sheets(rows, source_context=source_context, run_summary=run_summary,
+                         table_name='Granskning')
+    audit['Urvalsmetod'] = pd.DataFrame([{
+        'Urvalsenhet': 'Källrad (en förekomst, inte en hel verifikation)',
+        'Population': 'Alla rader i Kvar för granskning efter aktiva exkluderingsregler, före tillfälliga vyfilter.',
+        'Ordning': 'Källfilens inläsningsordning efter exkludering, utan omsortering. Populationens positioner räknas från 1.',
+        'Urvalsmetod': 'Randomiserat radurval' if method == 'randomized' else 'Var 20:e rad',
+        'Metod': ('Slumpmässigt utan återläggning från hela radpopulationen; export i populationsordning.'
+                  if method == 'randomized' else 'Positionerna 20, 40, 60 osv. utan ersättningsval.'),
+        'Antalsregel': 'Antal rader i populationen // 20 (avrundat nedåt). Samma antal för båda radurvalen.',
+        'Intervall': REVIEW_SAMPLE_INTERVAL if method == 'systematic' else None,
+        'Seed': str(REVIEW_SAMPLE_SEED) if method == 'randomized' else None,
+        'Slumpgenerator': (f'random.Random.sample (MT19937), Python {python_version()}, review-rows-v1'
+                          if method == 'randomized' else None),
+        'Antal rader i populationen': len(review),
+        'Önskat antal rader': len(positions),
+        'Antal valda rader': len(rows),
+        'Körningskontext': 'Körningsöversikt avser hela analysen och dess befintliga verifikationsurval. Detta radurval är en separat export.',
+    }])
+    audit['Urvalspopulation'] = population
+    audit['Urvalspositioner'] = selected
+    return _workbook({'Granskning': rows, **supplier_sheets(supplier_analysis, rows.index), **audit})
+
+
 def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_summary=None,
                      source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None,
                      filenames=None):
@@ -349,5 +389,11 @@ def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_su
             **combined_audit,
         }),
     }
+    workbooks.update({
+        filename: lambda method=method: _review_sample_workbook(
+            review, method, supplier_analysis=supplier_analysis,
+            run_summary=run_summary, source_context=source_context)
+        for filename, method in REVIEW_SAMPLE_FILES.items()
+    })
     names = list(workbooks) if filenames is None else list(filenames)
     return {name: workbooks[name]() for name in names}

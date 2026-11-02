@@ -98,6 +98,6 @@ def test_upload_analyze_download_rerun_and_error_recovery(tmp_path):
     app.file_uploader[0].set_value(('synthetic.xlsx', content, MIME)).run()
     app.button[0].click().run()
     assert not app.exception
-    assert len(app.download_button) == 6
+    assert len(app.download_button) == 8
     assert source.read_bytes() == content
     assert source.stat().st_mtime_ns == mtime

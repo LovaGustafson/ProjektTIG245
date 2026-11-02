@@ -516,6 +516,31 @@ Each retained source row receives classification evidence, rule IDs, fields, con
 
 Streamlit also prepares `granskning.xlsx` (`Granskning`), `bortfiltrerade.xlsx` (`Bortfiltrerade`) and `samlad_kontrollfil.xlsx` (both tables plus `Sammanfattning`). These tables retain source headers; excluded rows receive an extra reason column. Customer-facing copies remove numbered Slutk markers from Huvudtext as described below. The UI offers these three downloads plus the flagged, sample and uncertain-supplier workbooks. All use the same workbook serializer. The UI generates only the requested workbook on download, using its run's result snapshot without rereading source files/configuration or repeating analysis. Temporary export files are removed after their bytes are collected. New analyses, including refiltering, create a new snapshot/cache; caches are not shared between runs or sessions.
 
+The 2026-11-02 M5/M6 export request additionally provides two independent **row**
+downloads under Export: `Hämta manuellt stickprov (var 20:e)`
+(`manual_sample_every_20th.xlsx`) and `Hämta manuellt stickprov (randomiserat)`
+(`manual_sample_randomized.xlsx`). Both use exactly the full `Kvar för granskning`
+population, including retained invalid/ungrouped rows, before temporary view filters.
+Ordering is the parsed source-file order after active exclusions, without sorting
+by business identifiers, dates, matching or flags. One-based positions 20, 40, 60,
+etc. are selected literally, without supplier replacement. The random method uses
+local `random.Random(42).sample(range(n), n // 20)` without replacement, then sorts
+selected offsets into population order for export. Both sizes are floor(n / 20);
+below 20 rows both downloads are empty workbooks retaining the review headers.
+Duplicate/missing business identifiers never merge occurrences. The `Granskning`
+sheet has the same columns, enrichment and presentation as `granskning.xlsx`.
+`Urvalsmetod` records row unit, population, ordering, count rule, target/actual
+counts, seed as text, generator, Python version and `review-rows-v1`;
+`Urvalspopulation` records every eligible source position and selection flag;
+`Urvalspositioner` records selected population/source positions and Excel output
+rows. Existing `Källspårning`/`Källinformation` identify exact source occurrences,
+source workbook hash, sheet and original Excel row. Supplier evidence is scoped to
+the selected rows. `Körningsöversikt` remains whole-analysis context, explicitly
+distinguished from the row sample. These downloads share the completed-run snapshot
+and lazy serialization/cache; refiltering rebuilds the population. They do not
+change automatic analysis, existing verification-level sampling, its method/seed
+controls or `manual_sample.xlsx`.
+
 The confirmed 2026-09-29 presentation rule hides numbered `Slutk` markers in `Huvudtext`/`header_text` and extracted `supplier_text_raw` in all UI tables/details and Excel reports, including excluded rows, verification context and manual samples. `src/presentation.py` applies the existing `normalize_header_text` only to values containing a numbered marker, on presentation copies. `Prelb`, standalone `Slutk`, `Slutkund AB` and `Slutk123abc` remain unchanged. Original headers remain in the source file/upload bytes and internal original, standardized, filtered, grouped and sampled tables; matching evidence and source-occurrence linkage remain intact. This does not change supplier extraction/matching, filtering, grouping, ordering or sampling.
 
 When supplier matching is available, review/cleaned/flagged/sample exports add matching fields and the sheets `Registerinformation`, `Leverantörsmatchning`, `Leverantörskandidater` and `Möjliga avtal`. Added fields avoid original-column collisions with `_` prefixes. An unusable supplied register yields availability/issue metadata instead of match results. Excluded exports are not supplier-enriched. `Möjliga avtal` carries the original register organization-number value, which can be an unusable identifier such as a personal-number form; this is open decision D5 in [Q14](docs/requirements/OPEN_QUESTIONS.md#q14--organization-number-policy-and-identifier-exposure).
@@ -559,18 +584,29 @@ filters remain outside the result tabs. All tabs retain eager execution; tab
 navigation does not create an analysis, regenerate a sample or reset selections.
 `src/ui_run_summary.py` separates the overview, deviations/contract periods and
 sampling overview into renderers over the same completed result and chart data.
-The sampling tab renders its original overview first, followed by the dynamic
-register identity and then the existing method controls, selected rows and
-decision tables. Detailed supplier cards, the `review_rows` table, row details
+The sampling tab renders one compact overview and the existing method controls,
+followed by selected verifications. Population evidence/charts, source-row tables,
+register identity and decision/classification details remain accessible in
+collapsed sections. Detailed supplier cards, the `review_rows` table, row details
 and the complete supplier-view scope are rendered once under `Leverantörsmatchning`.
 The overview retains supplier-chart scope context and links to that detailed
 classification section. `Detaljer` retains the population KPI drill-downs and
 nested `Granskning`, `Bortfiltrerade` and `Kontroller` tabs. `Export` owns the same
-six deferred download controls. Widget keys, callbacks and source-index mapping
+eight deferred download controls. Widget keys, callbacks and source-index mapping
 retain their existing contracts; `Till översikt` still resets views without
 programmatically selecting a native tab.
 
-The visual sections present compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, flagged-verification, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. Contract-period statuses remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, flag/error explanations and exports remain available in their respective tabs. Temporary view filters do not change dashboard counts or the sample. Metric and label simplification is outside this navigation change.
+The visual sections present compact KPIs and horizontal charts for retained/excluded source rows, recorded exclusion-rule hits, existing supplier-match statuses, contract-period statuses and selected/remaining eligible verifications. Population, exclusion, flagged-verification, contract and sampling counts come directly from `RunSummary`; supplier-status counts come from `SupplierAnalysis.rows`. Unavailable matching is displayed as unavailable, without fabricated match statuses. Zero-result categories have explicit empty states. Contract-period statuses remain distinct, and no review-completion progress is inferred. Existing source-row drill-downs, validation, flag/error explanations and exports remain available in their respective tabs. Temporary view filters do not change dashboard counts or the sample.
+
+The Phase 3 overview presentation has three metric cards, in order: `Antal rader`
+(`source_rows`), `Exkluderade · rader` (`excluded_rows`) and `Kvarvarande · rader`
+(`included_rows`). The repeated internal `Analysöversikt` heading, the caption
+beginning `Hela analyskörningen` and the overview-only flagged/sample cards are
+removed. Detection results and flag reasons remain available in the deviations
+and detail sections; manual sampling remains intact in `Manuellt stickprov`.
+The page header omits the `Lokal analys` badge and retains the original-data
+assurance. These are presentation changes only; the six-tab navigation,
+calculations, source data, callbacks and session-state behavior are unchanged.
 
 Detailed register-validation issues are available in the collapsed
 `Registervarningar` expander under `Detaljer → Kontroller`, rather than as a list of warnings
@@ -585,7 +621,37 @@ The 2026-10-06 UI update retains the original graphical overview: horizontal bar
 
 `src/ui_chart_selection.py` isolates chart navigation. The `category` point selection explicitly projects `Status`, disables multi-selection and binds once to the named bar layer to avoid duplicate Vega signals in the layered chart. Native selection events trigger a Streamlit rerun. Each chart has a namespaced widget key with a reset revision; reset remounts the widget rather than assigning its read-only selection state. Independent chart selections persist across unrelated reruns. A different completed `PipelineResult` resets every chart, including after base refiltering or register changes; `Till översikt` also resets them. Selection never reruns analysis or alters temporary table filters, matching, sample membership, counts or exports.
 
-The sidebar title is `Exkluderingsregler`. Manual-sample verification summaries also show all distinct supplier names already recorded in sampling identity evidence, linked by source position, with explicit multiple-name/missing-name labels. No matching, population, sampling or export-content rules change. Refiltering still rereads the working source/register copies and recomputes analysis; it no longer waits for serialization of eight unrequested workbooks.
+The sidebar's `Exkluderingsregler` expander is collapsed initially. Manual-sample verification summaries also show all distinct supplier names already recorded in sampling identity evidence, linked by source position, with explicit multiple-name/missing-name labels. No matching, population, sampling or export-content rules change. Refiltering still rereads the working source/register copies and recomputes analysis; it does not serialize unrequested workbooks.
+
+The 2026-11-02 first-time-user cleanup removes repeated upload filenames/status
+messages, per-upload size captions, the decorative uppercase page tagline and
+the persistent analysis-success banner. One common `Excel (.xlsx)`/actual-size
+caption accompanies short upload labels. The native uploader retains each
+uploaded filename; a configured default register retains a separate visible
+`Standardregister` identity. Invoice validation/read errors and empty-input
+warnings remain visible. Usable-register warnings link to the existing detailed
+warnings; absent/unusable registers remain explicit. The optional register date
+is in a collapsed expander with ISO display and field help; source/date identity,
+unknown-date handling, cache and replacement/reset callbacks are unchanged.
+Exclusion settings remain fully mounted inside their collapsed sidebar expander;
+one caption reports whether standard or customized rules are selected.
+
+Manual sampling now presents `Verifikationer att välja från`, `Valda verifikationer`
+and `Rader i stickprovet` once, explaining that each selected verification includes
+all its bookkeeping rows. The method selector remains unchanged, with a short
+plain-language explanation. `Så gjordes urvalet` contains the original interactive
+chart, category drilldowns and population/matching-unit explanations. Shortfall
+and ungrouped-row warnings remain outside the collapsed sections. The selected
+supplier summary hides its classification column visually; all classification
+values remain in memory and the audit details. `Visa stickprovets … bokföringsrader`
+contains the original source-row table and independent view filters.
+`Urvalsbeslut, klassificering och källspårning` retains register identity,
+planned/usable-identity counts, seed/time, classification/quota metrics, full
+limitations and decisions. One visible short message explains potential internal
+suppliers when a nonempty sample lacks active internal rules or includes
+unclassified suppliers. Filter panels show counts and active-filter captions
+only when a filter is active. All evidence is still rendered on reruns; collapse
+does not defer computation, change widgets, regenerate a sample or alter exports.
 
 The overview explains the audited units: the sample population is `len(verifications)` after routing unusable IDs and grouping; strong supplier hits count retained rows with `STRONG_MATCH`, including any ungrouped rows. These are intentionally different units, not alternative counts of the same population. Contract counts remain comparisons: a row without a candidate has no contract comparison and is explained under supplier matching, not given a fabricated `NOT_CHECKED` contract result. `NOT_CHECKED` contract comparisons remain separate from dates actually outside a period and do not imply missing or invalid contracts. No filtering, matching, date policy, detection, grouping, sampling, summary calculation or export behavior changes in this update.
 

@@ -8,6 +8,7 @@ import yaml
 from streamlit.testing.v1 import AppTest
 
 from src.sampling.manual_sample import plan_manual_sample, plan_random_sample
+from src.output.report_generator import REVIEW_SAMPLE_FILES
 from src.supplier_matching.view_scope import classify_supplier_view, validate_classification_rules
 from src.ui_support import analyze_upload, select_sample_method
 from tests.test_feature_package import invoices, registry, settings, workbook
@@ -124,14 +125,18 @@ def test_saved_plans_and_all_exports_share_the_recorded_evidence(review, monkeyp
             for filename in current.downloads:
                 sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
                 metadata = sheets['Urvalsmetod'].iloc[0]
-                assert metadata['Antal valda verifikationer'] == len(plan.sample)
-                assert metadata['Genereringstidpunkt (UTC)'] == plan.generated_at
-                assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
-                assert metadata['Klassificeringsunderlag SHA-256'] == plan.classification_fingerprint
-                assert sheets['Urvalsbeslut'].decision.tolist() == plan.decisions.decision.tolist()
-                assert sheets['Urvalsidentiteter'].supplier_key.tolist() == plan.identity_rows.supplier_key.tolist()
-                if plan.method == 'randomized':
-                    assert metadata['Seed'] == str(plan.seed)
+                if filename in REVIEW_SAMPLE_FILES:
+                    assert metadata['Antal valda rader'] == len(current.result.filtering.cleaned_data) // 20
+                    assert 'Urvalsbeslut' not in sheets
+                else:
+                    assert metadata['Antal valda verifikationer'] == len(plan.sample)
+                    assert metadata['Genereringstidpunkt (UTC)'] == plan.generated_at
+                    assert metadata['Populationens identitetsunderlag SHA-256'] == plan.population_fingerprint
+                    assert metadata['Klassificeringsunderlag SHA-256'] == plan.classification_fingerprint
+                    assert sheets['Urvalsbeslut'].decision.tolist() == plan.decisions.decision.tolist()
+                    assert sheets['Urvalsidentiteter'].supplier_key.tolist() == plan.identity_rows.supplier_key.tolist()
+                    if plan.method == 'randomized':
+                        assert metadata['Seed'] == str(plan.seed)
                 if filename == 'manual_sample.xlsx':
                     assert sheets['Källspårning'].source_row_position.tolist() == [
                         p for verification in plan.sample for p in verification.rows.index]

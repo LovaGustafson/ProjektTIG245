@@ -6,7 +6,8 @@ from io import BytesIO
 import pandas as pd
 import pytest
 
-from src.output.report_generator import XLSX_EXCLUDED_COLUMNS, _workbook
+from src.output.report_generator import XLSX_EXCLUDED_COLUMNS, REVIEW_SAMPLE_FILES, _workbook
+from src.sampling.review_sample import review_sample_positions
 from src.pipeline import export_pipeline_result
 from src.ui_support import analyze_upload, select_sample_method
 from tests.synthetic_org import org
@@ -18,6 +19,7 @@ DOWNLOADS = {
     'cleaned_data.xlsx', 'flagged_invoices.xlsx', 'manual_sample.xlsx',
     'uncertain_suppliers.xlsx', 'excluded_data.xlsx', 'granskning.xlsx',
     'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx',
+    *REVIEW_SAMPLE_FILES,
 }
 USEFUL_MATCH_COLUMNS = {
     'supplier_match_status', 'supplier_match_score', 'supplier_match_reason',
@@ -63,6 +65,8 @@ def expected_positions(result):
         'manual_sample.xlsx': sample, 'uncertain_suppliers.xlsx': uncertain,
         'excluded_data.xlsx': excluded, 'granskning.xlsx': kept,
         'bortfiltrerade.xlsx': excluded, 'samlad_kontrollfil.xlsx': kept + excluded,
+        **{filename: [kept[i] for i in review_sample_positions(len(kept), method)]
+           for filename, method in REVIEW_SAMPLE_FILES.items()},
     }
 
 
@@ -83,8 +87,11 @@ def test_all_ui_xlsx_downloads_omit_only_internal_columns(tmp_path, deferred, mo
         sheets = read_sheets(review.downloads[filename])
         assert sheets['Källspårning'].source_row_position.tolist() == positions[filename]
         assert len(sheets['Källspårning']) == len(positions[filename])
-        assert sheets['Urvalsbeslut'].decision.tolist() == before.sampling_result.decisions.decision.tolist()
-        assert sheets['Urvalsklassificering'].classification.tolist() == before.sampling_result.classification_rows.classification.tolist()
+        if filename in REVIEW_SAMPLE_FILES:
+            assert sheets['Urvalsmetod'].iloc[0]['Antal valda rader'] == len(positions[filename])
+        else:
+            assert sheets['Urvalsbeslut'].decision.tolist() == before.sampling_result.decisions.decision.tolist()
+            assert sheets['Urvalsklassificering'].classification.tolist() == before.sampling_result.classification_rows.classification.tolist()
         if mode != 'unavailable' and 'Leverantörsmatchning' in sheets:
             matches = sheets['Leverantörsmatchning']
             assert USEFUL_MATCH_COLUMNS.issubset(matches.columns)
