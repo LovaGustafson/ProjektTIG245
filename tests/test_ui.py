@@ -26,7 +26,8 @@ def test_upload_round_trip_cleanup_and_summaries():
     assert len(ui_support.validation_table(review.result)) == 1
     assert set(review.downloads) == {'cleaned_data.xlsx', 'flagged_invoices.xlsx', 'manual_sample.xlsx',
                                      'granskning.xlsx', 'bortfiltrerade.xlsx', 'samlad_kontrollfil.xlsx',
-                                     'uncertain_suppliers.xlsx', 'excluded_data.xlsx'}
+                                     'uncertain_suppliers.xlsx', 'excluded_data.xlsx',
+                                     'manual_sample_every_20th.xlsx', 'manual_sample_randomized.xlsx'}
     for filename, data in review.downloads.items():
         assert pd.ExcelFile(BytesIO(data)).sheet_names
     assert all(not path.parent.parent.exists() for path in review.result.report_paths.values())
@@ -61,7 +62,7 @@ def test_streamlit_initial_screen():
     assert not app.exception
     assert app.button[0].disabled
     assert app.title[0].value == 'Fakturagranskning'
-    assert app.file_uploader[0].label == 'Här laddar du upp fakturaunderlaget'
+    assert app.file_uploader[0].label == 'Fakturaunderlag'
     assert not app.metric
     assert not app.get('download_button')
 
@@ -88,7 +89,7 @@ def test_streamlit_result_screen():
     assert [tab.label for tab in main_tabs[4].get('tab_container')[0].children.values()] == [
         'Granskning', 'Bortfiltrerade', 'Kontroller']
     assert len(app.radio) == 1  # One shared sampling UI, no duplicated controls.
-    assert len(app.get('download_button')) == 6
+    assert len(app.get('download_button')) == 8
     assert not any('Vissa kontroller har inte bedömts' in warning.value for warning in app.warning)
     assert not next(tab for tab in app.tabs if tab.label == 'Kontroller').dataframe
     assert not any('Detektionskontroller' in item.value for item in app.markdown)
@@ -101,7 +102,8 @@ def test_streamlit_result_screen():
     assert len(next(tab for tab in app.tabs if tab.label == 'Granskning').dataframe[-1].value) == 1
     assert [button.label for button in app.download_button] == [
         'Kvar för granskning', 'Bortfiltrerade', 'Samlad kontrollfil', 'Hämta avvikelserapport',
-        'Hämta manuellt stickprov', 'Hämta osäkra namnmatchningar']
+        'Hämta manuellt stickprov', 'Hämta osäkra namnmatchningar',
+        'Hämta manuellt stickprov (var 20:e)', 'Hämta manuellt stickprov (randomiserat)']
 
 
 def test_flagged_selection_shows_all_reasons():

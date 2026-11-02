@@ -241,13 +241,13 @@ def test_dashboard_sampling_and_register_replacement(monkeypatch):
     app.file_uploader[1].set_value(('custom.xlsx', workbook(registry()), mime)).run()
     app.button[0].click().run()
     assert not app.exception
+    overview = app.main.get('tab_container')[0].children[0]
+    assert [(metric.label, metric.value) for metric in overview.metric] == [
+        ('Antal rader', '100'), ('Exkluderade · rader', '0'), ('Kvarvarande · rader', '100')]
     assert {m.label: m.value for m in app.metric} == {
-        'Källpopulation · rader': '100', 'Kvarvarande · rader': '100',
-        'Exkluderade · rader': '0', 'Flaggade · verifikationer': '0',
-        'Manuellt urval · verifikationer': '1',
-        'Verifikationer i urvalspopulationen': '100', 'Ordinarie urvalsintervall': 'Var 20:e',
+        'Antal rader': '100', 'Exkluderade · rader': '0', 'Kvarvarande · rader': '100',
+        'Verifikationer att välja från': '100',
         'Valda verifikationer': '1', 'Rader i stickprovet': '1',
-        'Önskat antal fakturor': '5', 'Faktiskt antal fakturor': '1',
         'Bekräftat interna': '0', 'Bekräftat externa': '0', 'Oklassificerade': '1',
         'Bortval på grund av kvotbegränsning': '0', 'Bortval på grund av klassificeringskonflikter': '0'}
     assert any('1 av önskade 5' in warning.value for warning in app.warning)

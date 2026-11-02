@@ -1,6 +1,6 @@
 # Current Customer MoSCoW Requirements
 
-Last updated: 2026-10-26
+Last updated: 2026-11-02
 
 This document contains the current customer requirements for the TIG245 prototype.
 
@@ -39,6 +39,17 @@ The final upload UI cleanup request removes the dedicated `Ta bort register` and
 native upload/replacement remain; shared backend/CLI source-selection modes are
 unchanged. Swedish size/format guidance replaces the duplicated native uploader
 metadata visually, without changing accepted files or upload limits.
+
+The 2026-11-02 presentation cleanup (M5/M6, C1–C3) prioritizes first-time users:
+show upload format/size guidance once, use native uploaded filenames, retain
+actionable error/register warnings, and collapse optional register dates and
+exclusion settings. Manual sampling has one three-count summary, a short
+explanation distinguishing verifications from their rows and one method selector.
+Charts, full population evidence, planned counts, register identity, seed/time,
+classification/quota details and source-row tables remain available in collapsed
+sections. A visible short warning still explains the risk of internal suppliers
+when classification is unavailable or incomplete. No analysis, selection,
+classification, filtering, export or source-preservation rule changes.
 
 The 2026-10-12 sampling/filter request confirms adding `LR91S` and `LR95S` to
 the existing default verification-type exclusions (M2/M4/M5/M6). Users can
@@ -180,6 +191,15 @@ Open questions: structural-row boundaries and final invalid-record handling rema
 ---
 
 ## M5 — Sampling criteria documented
+
+The 2026-11-02 export request adds two separate row-download samples under M5/M6:
+every 20th retained review row (positions 20, 40, 60, etc.) in source-file order,
+and a seeded random draw without replacement of the same floor(retained rows / 20)
+size from that identical population. Seed 42, generator/version, ordering,
+population positions and source-occurrence linkage are recorded in the workbooks.
+These exports retain the review workbook's columns and are independent of the
+existing verification-level sampling methods, supplier constraints and targets
+documented below. Temporary UI view filters do not affect either row download.
 
 The approved 2026-10-13 Del 1 constraint is implemented for both methods:
 confirmed internal suppliers may occupy at most floor(actual selected

@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from streamlit.testing.v1 import AppTest
 
 from src.sampling.manual_sample import plan_random_sample
+from src.output.report_generator import REVIEW_SAMPLE_FILES
 from src.ui_support import analyze_upload, select_sample_method, DeferredDownloads
 from tests.test_feature_package import invoices, workbook
 from tests.synthetic_org import org
@@ -127,9 +128,10 @@ def test_method_reruns_view_filters_regeneration_and_exports(monkeypatch):
         assert first.downloads['manual_sample.xlsx'] == first_export
         assert_visible_export(app)
         overview = next(c for c in app.get('flex_container') if c.key == 'sample_overview')
-        assert overview.metric[1].value == 'Slumpmässigt'
+        assert overview.metric[1].label == 'Valda verifikationer'
+        assert overview.metric[1].value == '20'
         assert overview.metric[2].value == '20'
-        assert any(m.label == 'Önskat antal fakturor' and m.value == '20' for m in app.metric)
+        assert any(c.value.startswith('Planerat antal: 20 verifikationer.') for c in app.caption)
 
 
 def test_lr_filter_changes_invalidate_random_cache_and_keep_selected_method(monkeypatch):
@@ -190,8 +192,8 @@ def test_ui_empty_or_small_random_population_has_target_actual_and_reason(count)
     app, _ = start_app(population(count))
     app.radio(key='manual_sample_method').set_value('randomized').run()
     assert not app.exception
-    assert any(m.label == 'Önskat antal fakturor' and m.value == '20' for m in app.metric)
-    assert any(m.label == 'Faktiskt antal fakturor' and m.value == str(count) for m in app.metric)
+    assert any(c.value.startswith('Planerat antal: 20 verifikationer.') for c in app.caption)
+    assert any(m.label == 'Valda verifikationer' and m.value == str(count) for m in app.metric)
     assert any(f'{count} av önskade 20' in warning.value for warning in app.warning)
     assert_visible_export(app)
 
@@ -203,7 +205,7 @@ def test_seed_precision_complete_group_provenance_and_all_export_metadata(monkey
     data.loc[1, ['Vernr', 'Huvudtext']] = data.loc[0, ['Vernr', 'Huvudtext']]
     review = select_sample_method(analyze_upload(workbook(data), registry_mode='disabled', defer_downloads=True), 'randomized')
     assert sample_ids(review) == ['1', '3', '4']
-    for filename in review.downloads:
+    for filename in set(review.downloads) - set(REVIEW_SAMPLE_FILES):
         book = load_workbook(BytesIO(review.downloads[filename]))
         metadata = book['Urvalsmetod']
         seed_column = [c.value for c in metadata[1]].index('Seed') + 1

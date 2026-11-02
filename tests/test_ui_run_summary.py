@@ -1,4 +1,5 @@
 """Dashboard acceptance using synthetic pipeline evidence and real exports."""
+from copy import deepcopy
 from io import BytesIO
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ from src.models.result import CheckResult, CheckStatus
 from src.models.supplier import SupplierMatchStatus
 from src.pipeline import run_pipeline
 from src.ui_run_summary import dashboard_tables
-from src.ui_support import analyze_upload
+from src.ui_support import DeferredDownloads, UploadResult, analyze_upload
 from tests.test_feature_package import invoices, registry, workbook
 from tests.synthetic_org import org
 
@@ -23,9 +24,9 @@ def counts(table):
 
 
 @pytest.mark.parametrize('renderer, heading, chart_keys, metric_count', [
-    ('show_run_summary', 'Analysöversikt', {'chart_population', 'chart_suppliers'}, 5),
+    ('show_run_summary', None, {'chart_population', 'chart_suppliers'}, 3),
     ('show_deviations_and_contracts', 'Avvikelser och avtalsperioder', {'chart_contracts'}, 0),
-    ('show_sampling_overview', 'Manuellt stickprov', {'chart_sample'}, 4),
+    ('show_sampling_overview', 'Manuellt stickprov', {'chart_sample'}, 3),
 ])
 def test_separated_renderers_preserve_their_existing_content_only(renderer, heading, chart_keys, metric_count):
     review = analyze_upload(workbook(invoices()), registry_content=workbook(registry()), defer_downloads=True)
@@ -37,7 +38,7 @@ def test_separated_renderers_preserve_their_existing_content_only(renderer, head
     app.session_state['result'] = review.result
     app.run()
     assert not app.exception
-    assert [item.value for item in app.subheader] == [heading]
+    assert [item.value for item in app.subheader] == ([] if heading is None else [heading])
     assert len(app.metric) == metric_count
     actual_charts = {key for key in ('chart_population', 'chart_suppliers', 'chart_exclusions',
                                      'chart_contracts', 'chart_sample')
@@ -122,6 +123,69 @@ def test_check_statuses_remain_in_backend_without_dashboard_distribution(tmp_pat
     assert result.summary.flagged_rows == 1
 
 
+def test_simplified_overview_preserves_nonzero_flags_sampling_and_matching(tmp_path, monkeypatch):
+    monkeypatch.setattr('src.ingestion.registry_source.default_registry_location',
+                        lambda config: (None, 'Ej konfigurerat'))
+    data = invoices(24)
+    data.loc[:1, 'Konto'] = '7698'
+    content = workbook(data)
+    source = tmp_path / 'synthetic.xlsx'
+    source.write_bytes(content)
+    contract_content = workbook(registry())
+    contracts = tmp_path / 'synthetic-register.xlsx'
+    contracts.write_bytes(contract_content)
+    reason = 'Syntetisk flaggningsorsak för manuell granskning.'
+
+    def synthetic_rule(verification, context):
+        status = CheckStatus.FLAGGED if verification.verification_id == '3' else CheckStatus.PASS
+        return [CheckResult(verification.verification_id, 'synthetic', status, reason)]
+
+    result = run_pipeline(source, output_dir=tmp_path / 'reports', supplier_register=contracts,
+                          use_default_registry=False, rules={'synthetic': synthetic_rule},
+                          export_reports=False)
+    before = deepcopy(result)
+    plan = result.sampling_result
+    summary = result.summary
+    assert (summary.source_rows, summary.excluded_rows, summary.included_rows) == (24, 2, 22)
+    assert summary.flagged_verifications == summary.sampled_verifications == 1
+    assert summary.strong_supplier_rows == 22
+    review = UploadResult(result, DeferredDownloads(result), content, None,
+                          registry_content=contract_content, registry_source=result.registry_source)
+    app = AppTest.from_file(str(APP), default_timeout=20)
+    app.session_state['review'] = review
+    app.run()
+    assert not app.exception
+    overview, deviations, sample, matching, details, exports = list(
+        app.main.get('tab_container')[0].children.values())
+    expected_metrics = [('Antal rader', '24'), ('Exkluderade · rader', '2'), ('Kvarvarande · rader', '22')]
+    assert [(metric.label, metric.value) for metric in overview.metric] == expected_metrics
+    assert not overview.subheader
+    assert not any('Hela analyskörningen.' in caption.value for caption in overview.caption)
+    assert reason in [text.value for text in details.text]
+    assert sample.radio(key='manual_sample_method').value == 'systematic'
+    selected = next(table.value for table in sample.dataframe
+                    if list(table.value.columns) == ['verification_id', 'supplier', 'supplier_classification'])
+    assert selected.verification_id.tolist() == [v.verification_id for v in result.manual_sample]
+    assert any(table.key == 'review_rows' for table in matching.dataframe)
+    widget_keys = [(element.type, element.key) for element in app if getattr(element, 'key', None)]
+    app.run()  # An ordinary rerun must preserve the run, sample and widget identities.
+    assert not app.exception
+    assert [(element.type, element.key) for element in app if getattr(element, 'key', None)] == widget_keys
+    assert app.session_state['review'] is review
+    assert review.result.summary is summary
+    assert review.result.sampling_result is plan
+    assert [(d.verification_id, d.status, d.checks, d.flag_reasons) for d in result.detection_results] == [
+        (d.verification_id, d.status, d.checks, d.flag_reasons) for d in before.detection_results]
+    assert [v.verification_id for v in review.result.manual_sample] == [v.verification_id for v in before.manual_sample]
+    for field in ('original_data', 'standardized_data', 'sampling_evidence', 'supplier_view'):
+        pd.testing.assert_frame_equal(getattr(result, field), getattr(before, field))
+    for field in ('rows', 'candidates', 'contracts'):
+        pd.testing.assert_frame_equal(getattr(result.supplier_analysis, field),
+                                      getattr(before.supplier_analysis, field))
+    pd.testing.assert_frame_equal(plan.decisions, before.sampling_result.decisions)
+    assert not review.downloads._bytes
+
+
 @pytest.mark.parametrize('register_content', [None, b'not an Excel file'])
 def test_unavailable_register_has_no_fabricated_supplier_statuses(register_content):
     review = analyze_upload(workbook(invoices(3)), registry_mode='uploaded', registry_content=register_content)
@@ -146,13 +210,13 @@ def test_dashboard_renders_zero_and_nonzero_results_in_assigned_tabs(mode):
     app.session_state['review'] = review
     app.run()
     assert not app.exception
-    assert app.subheader[0].value == 'Analysöversikt'
+    assert not any(heading.value == 'Analysöversikt' for heading in app.subheader)
     top_tabs = list(app.main.get('tab_container')[0].children.values())
     assert [tab.label for tab in top_tabs] == [
         'Analysöversikt', 'Avvikelser och avtalsperioder', 'Manuellt stickprov',
         'Leverantörsmatchning', 'Detaljer', 'Export']
     overview, deviations, sample, matching, details, exports = top_tabs
-    assert overview.subheader[0].value == 'Analysöversikt'
+    assert not overview.subheader
     assert deviations.subheader[0].value == 'Avvikelser och avtalsperioder'
     assert sample.subheader[0].value == 'Manuellt stickprov'
     assert matching.subheader[0].value == 'Leverantörsmatchning mot Koncerninköp'
@@ -163,10 +227,13 @@ def test_dashboard_renders_zero_and_nonzero_results_in_assigned_tabs(mode):
     assert not any(b.key == 'control_not_checked' for b in app.button)
     assert any(i.value == 'Attestkontroll ej genomförd – kräver attestregister eller motsvarande '
                'behörighetsunderlag som inte finns tillgängligt i prototypen.' for i in app.info)
-    metrics = {m.label: m.value for m in app.metric}
-    assert metrics['Källpopulation · rader'] == str(review.result.summary.source_rows)
-    assert metrics['Flaggade · verifikationer'] == '0'
-    assert metrics['Manuellt urval · verifikationer'] == '0'
+    summary = review.result.summary
+    assert [(metric.label, metric.value) for metric in overview.metric] == [
+        ('Antal rader', str(summary.source_rows)),
+        ('Exkluderade · rader', str(summary.excluded_rows)),
+        ('Kvarvarande · rader', str(summary.included_rows)),
+    ]
+    assert not any('Hela analyskörningen.' in caption.value for caption in overview.caption)
     assert any('Granskningsstatus registreras inte' in c.value for c in app.caption)
     assert not app.get('progress')
     if mode != 'matching':
@@ -192,8 +259,8 @@ def test_dashboard_renders_zero_and_nonzero_results_in_assigned_tabs(mode):
     assert not matching.get('vega_lite_chart')
     assert not details.get('vega_lite_chart')
     assert not exports.get('vega_lite_chart')
-    assert len(app.download_button) == 6
-    assert len(exports.download_button) == 6
+    assert len(app.download_button) == 8
+    assert len(exports.download_button) == 8
     assert matching.dataframe  # Existing source-linked detailed matching table remains.
     assert not any(table.key == 'review_rows' for table in overview.dataframe)
     pd.testing.assert_frame_equal(review.result.original_data, source_before)
@@ -210,9 +277,9 @@ def test_graphical_overview_ignores_legacy_state_and_supports_category_selection
     app.session_state['chart_population'] = {'selection': {'category': [{'Status': 'included'}]}}
     app.run()
     assert not app.exception
-    assert len(app.metric) == 17
+    assert len(app.metric) == 11
     manual = next(tab for tab in app.tabs if tab.label == 'Manuellt stickprov')
-    assert len(manual.metric) == 12  # Four overview metrics plus the eight existing detailed metrics.
+    assert len(manual.metric) == 8  # Three visible summary cards and five collapsed classification metrics.
     charts = app.get('vega_lite_chart')
     assert len(charts) == 5
     for chart in charts:

@@ -21,9 +21,9 @@ def filter_panel(data, *, view, selection_key=None):
     definitions = discover_filters(data)
     labels = {definition.position: definition.label for definition in definitions}
     rules = {}
-    with st.expander('Tillfälliga vyfilter'):
-        st.caption('Gäller bara denna tabell. Regelklassning, KPI-antal och exporter påverkas inte. '
-                   'Filter för olika kolumner kombineras med OCH.')
+    with st.expander('Filtrera tabellen'):
+        st.caption('Påverkar bara vad som visas i tabellen. Urvalet och nedladdningarna ändras inte. '
+                   'En rad måste uppfylla alla valda filter för att visas.')
         st.button('Rensa alla filter', key=prefix + 'clear',
                   on_click=clear_ui_filters, args=(view, selection_key))
         selected = st.multiselect('Filtrera kolumner', list(labels), format_func=labels.get,
@@ -79,9 +79,9 @@ def filter_panel(data, *, view, selection_key=None):
                                                  format_func=missing.get, key=key + 'missing', **common)
                 rules[definition.position] = ViewFilter(**values)
     filtered = apply_filters(data, rules)
-    st.caption(f'Visar {len(filtered.data)} av {len(data)} rader')
-    st.caption('Aktiva vyfilter: ' + (' · '.join(filtered.active) if filtered.active else 'Inga'))
     if filtered.active:
+        st.caption(f'Visar {len(filtered.data)} av {len(data)} rader')
+        st.caption('Aktiva filter: ' + ' · '.join(filtered.active))
         st.button('Rensa vyfilter', key=prefix + 'clear_visible',
                   on_click=clear_ui_filters, args=(view, selection_key))
     for notice in filtered.notices:

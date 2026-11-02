@@ -81,6 +81,23 @@ def descendants(block):
             yield from descendants(child)
 
 
+def test_page_header_keeps_original_data_assurance_without_local_analysis_badge(local_register_only):
+    app = AppTest.from_file(str(APP), default_timeout=20).run()
+    assert not app.exception
+    header = next(container for container in app.main.get('flex_container')
+                  if container.key == 'page_header')
+    assert [title.value for title in header.title] == ['Fakturagranskning']
+    assert not header.caption
+    assert ('Granska leverantörsfakturor, förstå avvikelser och samla underlag för manuell kontroll.'
+            in [item.value for item in header.markdown])
+    assurance = '\n'.join(element.proto.body for element in header.get('html'))
+    assert 'audit-assurances' in assurance
+    assert 'Originaldata förändras inte' in assurance
+    assert 'lokal analys' not in assurance.lower()
+    assert [upload.label for upload in app.sidebar.file_uploader] == [
+        'Fakturaunderlag', 'Koncernavtalsregister (valfritt)']
+
+
 def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local_register_only):
     app, saved = start_uploaded_review()
     issues = saved.result.supplier_analysis.registry.issues
@@ -122,7 +139,7 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     assert not any(button.key and button.key.startswith('supplier_') for button in main_tabs[0].button)
     assert not any(table.key == 'review_rows' for table in main_tabs[0].dataframe)
 
-    assert [heading.value for heading in main_tabs[0].subheader] == ['Analysöversikt']
+    assert not main_tabs[0].subheader
     assert [heading.value for heading in main_tabs[1].subheader] == ['Avvikelser och avtalsperioder']
     assert ('För rader utan någon leverantörskandidat finns ingen avtalsjämförelse i backend. '
             'De räknas inte i denna fördelning; deras evidens finns under Leverantörsmatchning.'
@@ -134,12 +151,15 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     method_heading = next(item for item in manual.subheader if item.value == 'Urvalsmetod')
     manual_positions = {id(item): position for position, item in enumerate(descendants(manual))}
     assert max(manual_positions[id(item)] for item in descendants(sample_overview)) < manual_positions[id(register_info)]
-    assert manual_positions[id(register_info)] < manual_positions[id(method_heading)]
+    assert manual_positions[id(method_heading)] < manual_positions[id(register_info)]
+    audit = next(e for e in manual.expander if e.label == 'Urvalsbeslut, klassificering och källspårning')
+    assert register_info in list(descendants(audit))
+    assert not audit.proto.expanded
     assert register_info.value == 'Register för denna körning: syntetiskt-register.xlsx (matchning tillgänglig)'
     assert len([item for item in app.text if item.value.startswith('Register för denna körning:')]) == 1
     assert len(app.radio) == len(manual.radio) == 1
     assert manual.radio[0].key == 'manual_sample_method'
-    assert len(app.download_button) == len(main_tabs[5].download_button) == 6
+    assert len(app.download_button) == len(main_tabs[5].download_button) == 8
 
     assert not any('Registerrad' in warning.value for warning in tab.warning)
     warnings = register_warnings(app)
@@ -147,10 +167,10 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     assert [item.value for item in warnings.text] == list(issues)
     assert saved.result.supplier_analysis.registry.issues == issues
     assert [upload.label for upload in app.sidebar.file_uploader] == [
-        'Här laddar du upp fakturaunderlaget', 'Här laddar du upp koncernavtalsregistret']
-    assert 'Uppladdat fakturaunderlag: syntetiskt-underlag.xlsx' in [item.value for item in app.sidebar.text]
-    assert 'Filen har kontrollerats utan valideringsfel. Du kan fortsätta med granskningen.' in [
-        item.value for item in app.sidebar.caption]
+        'Fakturaunderlag', 'Koncernavtalsregister (valfritt)']
+    assert app.file_uploader[0].value.name == 'syntetiskt-underlag.xlsx'
+    assert not any(item.value.startswith('Uppladdat fakturaunderlag:') for item in app.sidebar.text)
+    assert not any('utan valideringsfel' in item.value for item in app.sidebar.caption)
     review_text = '\n'.join(item.value for kind in ('caption', 'text', 'markdown', 'subheader')
                             for item in tab.get(kind))
     assert all(text not in review_text for text in (
@@ -282,7 +302,8 @@ def test_invalid_invoice_replacement_restores_review_without_losing_register_dat
     assert review_tab(app).dataframe[0].value.Vernr.tolist() == ['strong']
     assert app.session_state['review'].source_content == replacement
     assert app.session_state['review'].registry_snapshot_date == date(2026, 6, 1)
-    assert 'Uppladdat fakturaunderlag: ersättning.xlsx' in [item.value for item in app.sidebar.text]
+    assert app.file_uploader[0].value.name == 'ersättning.xlsx'
+    assert not any(item.value.startswith('Uppladdat fakturaunderlag:') for item in app.sidebar.text)
 
 
 def test_upload_css_override_cannot_hide_review_tabs_or_controls():

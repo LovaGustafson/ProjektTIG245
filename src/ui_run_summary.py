@@ -230,15 +230,11 @@ def show_run_summary(result, *, charts=None):
     if charts is None:
         prepare_chart_selections(result)
         charts = dashboard_tables(result)
-    st.subheader('Analysöversikt')
-    st.caption('Hela analyskörningen. Tillfälliga vyfilter ändrar inte dessa antal eller exporterna.')
     st.caption('Öppna en kategori under diagrammen för förklaring, registrerade orsaker och underliggande poster.')
     with st.container(key='overview_kpis'):
-        for column, label, value in zip(st.columns(5),
-                ['Källpopulation · rader', 'Kvarvarande · rader', 'Exkluderade · rader',
-                 'Flaggade · verifikationer', 'Manuellt urval · verifikationer'],
-                [s.source_rows, s.included_rows, s.excluded_rows,
-                 s.flagged_verifications, s.sampled_verifications]):
+        for column, label, value in zip(st.columns(3),
+                ['Antal rader', 'Exkluderade · rader', 'Kvarvarande · rader'],
+                [s.source_rows, s.excluded_rows, s.included_rows]):
             column.metric(label, value)
 
     st.html('<ol class="audit-steps" aria-label="Analysens steg">'
@@ -326,7 +322,7 @@ def show_deviations_and_contracts(result, *, charts=None):
 
 
 def show_sampling_overview(result, *, charts=None):
-    """Render the existing sampling overview without generating or selecting a sample."""
+    """Show one summary; keep population/selection evidence available on demand."""
     s = result.summary
     if s is None:
         return
@@ -335,63 +331,66 @@ def show_sampling_overview(result, *, charts=None):
         charts = dashboard_tables(result)
     with st.container(border=True, key='sample_overview'):
         st.subheader('Manuellt stickprov')
+        st.write('Granska de utvalda verifikationerna nedan och hämta stickprovet under Export. '
+                 'En verifikation är en grupp bokföringsrader. Alla rader i en vald verifikation följer med.')
         sampling = result.sampling_result
-        randomized = sampling is not None and sampling.method == 'randomized'
-        for column, label, value in zip(st.columns(4),
-                ['Verifikationer i urvalspopulationen', 'Urvalsmetod' if randomized else 'Ordinarie urvalsintervall',
-                 'Valda verifikationer', 'Rader i stickprovet'],
-                [s.eligible_verifications, 'Slumpmässigt' if randomized else f'Var {s.sample_interval}:e',
-                 s.sampled_verifications, s.sampled_rows]):
+        for column, label, value in zip(st.columns(3),
+                ['Verifikationer att välja från', 'Valda verifikationer', 'Rader i stickprovet'],
+                [s.eligible_verifications, s.sampled_verifications, s.sampled_rows]):
             column.metric(label, value)
-        selected_sample = show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
-                         colors=['#126b78', '#b7c4d2'], empty_message='Urvalspopulationen är tom.')
-        st.caption(SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
-        if sampling is not None:
-            st.caption(f'Önskat antal: {sampling.target_size} verifikationer. '
-                       'Högst en vald verifikation per leverantörsnyckel/normaliserat namn.')
-            if sampling.shortfall_message:
-                st.warning(sampling.shortfall_message)
-            with st.expander('Urvalsmetod, leverantörsunikhet och urvalsbeslut', expanded=False):
-                st.write(sampling_method_description(sampling))
-                st.write(SAMPLE_IDENTITY)
-                show_evidence(sampling.decisions, 'Alla verifikationer · urvalsbeslut och orsaker')
-                show_evidence(sampling.identity_rows, 'Leverantörsnyckel och källposition per rad', registry_evidence=True)
-                unusable = sampling.identity_rows.loc[sampling.identity_rows['population_position'].isin(
-                    sampling.decisions.loc[~sampling.decisions['identity_usable'].astype(bool), 'population_position'])]
-                with st.expander('Utanför stickprovet – saknad eller flera leverantörsnycklar', expanded=False):
-                    show_source_rows(source_rows(result, unusable['source_row_position']))
-        with st.expander('Vad betyder urvalspopulation och stark namnmatchning?', expanded=False):
-            st.write('Urvalspopulationen räknar verifikationer: kvarvarande rader med användbart '
-                     'verifikations-ID grupperas på det normaliserade ID:t. Varje grupp räknas en gång, '
-                     'även om den innehåller flera rader. Valideringsfel i andra fält tar inte i sig '
-                     'bort gruppen ur populationen. Flaggning påverkar inte urvalet.')
-            st.write('Stark namnmatchning räknar kvarvarande källrader med backend-status STRONG_MATCH. '
-                     'Matchningsmotorn har då en enda registerkandidat som uppfyller namnmatchningens '
-                     'villkor och har organisationsnummer i avtalsregistret. Juridisk identitet har inte '
-                     'verifierats mot internkontrollsfilen. Det är varken ett antal unika leverantörer eller ett '
-                     'godkännande av köpets avtalsefterlevnad.')
-            st.write('Siffrorna kan därför skilja sig: en verifikation kan innehålla flera matchade rader, '
-                     'vissa rader får andra matchningsstatusar och även rader utan användbart '
-                     'verifikations-ID kan leverantörsmatchas när registret är tillgängligt.')
-            st.write('Leverantörsdiagrammet och dess kategorier avser raderna i leverantörsvyn. '
-                     'Bekräftade vyexkluderingar redovisas separat. Körningens totaler nedan '
-                     'och matchningsunderlaget i exporten omfattar även dessa rader.')
-            st.text(f'Denna körning: {s.eligible_verifications} verifikationer i urvalspopulationen, '
-                    f'{s.strong_supplier_rows} rader med stark namnmatchning och '
-                    f'{s.ungrouped_rows} kvarvarande rader utan användbart verifikations-ID.')
-            if s.supplier_unavailable_rows:
-                st.caption(f'Matchningen är otillgänglig för {s.supplier_unavailable_rows} rader; '
-                           'dessa har ingen fastställd matchningsstatus.')
-        show_verification_drilldown(result, 'all', 'Hela urvalspopulationen', s.eligible_verifications,
-                                   SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
-        for row in charts['sample'].itertuples(index=False):
-            show_verification_drilldown(result, row.Status, row.Kategori, row.Antal,
-                                       sampling_method_description(sampling) + ' '
-                                       'Flaggning påverkar inte urvalet. '
-                                       'Övriga grupper tillhör populationen men valdes inte till stickprovet.',
-                                       expanded=row.Status == selected_sample)
-        st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas. '
-                   'Se urvalet nedan i Manuellt stickprov och hämta underlaget under Export.')
+        if sampling is not None and sampling.shortfall_message:
+            st.warning(sampling.shortfall_message)
         if s.ungrouped_rows:
             st.warning(f'{s.ungrouped_rows} kvarvarande rader saknar användbart verifikations-ID. '
                        'De finns i granskningsunderlaget men ingår inte i det verifikationsbaserade stickprovet.')
+        with st.expander('Så gjordes urvalet', expanded=False):
+            _show_sampling_evidence(result, charts)
+
+
+def _show_sampling_evidence(result, charts):
+    s = result.summary
+    sampling = result.sampling_result
+    selected_sample = show_count_chart(charts['sample'], unit='Verifikationer', key='chart_sample',
+                     colors=['#126b78', '#b7c4d2'], empty_message='Urvalspopulationen är tom.')
+    st.caption(SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
+    if sampling is not None:
+        with st.expander('Urvalsmetod, leverantörsunikhet och urvalsbeslut', expanded=False):
+            st.write(sampling_method_description(sampling))
+            st.write(SAMPLE_IDENTITY)
+            show_evidence(sampling.decisions, 'Alla verifikationer · urvalsbeslut och orsaker')
+            show_evidence(sampling.identity_rows, 'Leverantörsnyckel och källposition per rad', registry_evidence=True)
+            unusable = sampling.identity_rows.loc[sampling.identity_rows['population_position'].isin(
+                sampling.decisions.loc[~sampling.decisions['identity_usable'].astype(bool), 'population_position'])]
+            with st.expander('Utanför stickprovet – saknad eller flera leverantörsnycklar', expanded=False):
+                show_source_rows(source_rows(result, unusable['source_row_position']))
+    with st.expander('Vad betyder urvalspopulation och stark namnmatchning?', expanded=False):
+        st.write('Urvalspopulationen räknar verifikationer: kvarvarande rader med användbart '
+                 'verifikations-ID grupperas på det normaliserade ID:t. Varje grupp räknas en gång, '
+                 'även om den innehåller flera rader. Valideringsfel i andra fält tar inte i sig '
+                 'bort gruppen ur populationen. Flaggning påverkar inte urvalet.')
+        st.write('Stark namnmatchning räknar kvarvarande källrader med backend-status STRONG_MATCH. '
+                 'Matchningsmotorn har då en enda registerkandidat som uppfyller namnmatchningens '
+                 'villkor och har organisationsnummer i avtalsregistret. Juridisk identitet har inte '
+                 'verifierats mot internkontrollsfilen. Det är varken ett antal unika leverantörer eller ett '
+                 'godkännande av köpets avtalsefterlevnad.')
+        st.write('Siffrorna kan därför skilja sig: en verifikation kan innehålla flera matchade rader, '
+                 'vissa rader får andra matchningsstatusar och även rader utan användbart '
+                 'verifikations-ID kan leverantörsmatchas när registret är tillgängligt.')
+        st.write('Leverantörsdiagrammet och dess kategorier avser raderna i leverantörsvyn. '
+                 'Bekräftade vyexkluderingar redovisas separat. Körningens totaler '
+                 'och matchningsunderlaget i exporten omfattar även dessa rader.')
+        st.text(f'Denna körning: {s.eligible_verifications} verifikationer i urvalspopulationen, '
+                f'{s.strong_supplier_rows} rader med stark namnmatchning och '
+                f'{s.ungrouped_rows} kvarvarande rader utan användbart verifikations-ID.')
+        if s.supplier_unavailable_rows:
+            st.caption(f'Matchningen är otillgänglig för {s.supplier_unavailable_rows} rader; '
+                       'dessa har ingen fastställd matchningsstatus.')
+    show_verification_drilldown(result, 'all', 'Hela urvalspopulationen', s.eligible_verifications,
+                               SAMPLE_POPULATION + ' ' + SAMPLE_ORDER)
+    for row in charts['sample'].itertuples(index=False):
+        show_verification_drilldown(result, row.Status, row.Kategori, row.Antal,
+                                   sampling_method_description(sampling) + ' '
+                                   'Flaggning påverkar inte urvalet. '
+                                   'Övriga grupper tillhör populationen men valdes inte till stickprovet.',
+                                   expanded=row.Status == selected_sample)
+    st.caption('Granskningsstatus registreras inte i verktyget. Antal färdiggranskade kan därför inte visas.')

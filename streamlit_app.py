@@ -195,13 +195,27 @@ def show_reports(review):
                                on_click='ignore',
                                file_name=filename,
                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.subheader('Manuella radurval för nedladdning')
+    st.caption('Båda alternativen använder Kvar för granskning i källfilens ordning efter exkluderingar. '
+               'Antalet valda rader är antalet kvarvarande rader delat med 20, avrundat nedåt. '
+               'Tillfälliga vyfilter påverkar inte urvalen. '
+               'Var 20:e väljer positionerna 20, 40, 60 osv. Randomiserat väljer samma antal utan '
+               'återläggning med fast seed 42. Färre än 20 rader ger ett tomt urval. '
+               'Varje vald rad exporteras separat; övriga rader i samma verifikation följer inte automatiskt med. '
+               'Det befintliga verifikationsurvalet visas under Manuellt stickprov.')
+    for filename, label in (
+        ('manual_sample_every_20th.xlsx', 'Hämta manuellt stickprov (var 20:e)'),
+        ('manual_sample_randomized.xlsx', 'Hämta manuellt stickprov (randomiserat)'),
+    ):
+        st.download_button(label, partial(review.downloads.__getitem__, filename), file_name=filename,
+                           on_click='ignore',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 def show_result(review):
     result = review.result
     flagged = flagged_table(result)
     errors = validation_table(result)
-    st.success('Analysen är klar. Granska resultatet i flikarna nedan.', icon=':material/task_alt:')
     # Keep technical failures visible regardless of the active tab.
     if any(check.status == 'ERROR' for r in result.detection_results for check in r.checks):
         st.warning('Vissa kontroller avbröts med tekniska fel. Se Flaggningar och tekniska fel under Detaljer → Kontroller.',
@@ -224,10 +238,6 @@ def show_result(review):
         show_deviations_and_contracts(result, charts=charts)
     with manual_tab:
         show_sampling_overview(result, charts=charts)
-        if result.supplier_analysis is not None:
-            registry = result.supplier_analysis.registry
-            st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
-                    (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
         show_manual_sample(result)
     with supplier_tab:
         show_supplier_matching(result, kept)
@@ -277,57 +287,63 @@ def show_manual_sample(result):
     st.radio('Urvalsmetod', list(SAMPLING_METHODS), format_func=SAMPLING_METHODS.get,
              key='manual_sample_method', label_visibility='collapsed', on_change=change_sampling_method)
     sampling = result.sampling_result
-    st.write('Aktiv urvalsmetod: ' + SAMPLING_METHODS[sampling.method])
     if sampling.method == 'randomized':
         st.button('Generera nytt slumpmässigt urval', key='regenerate_manual_sample',
-                  on_click=change_sampling_method, args=(True,))
-        st.text(f'Seed: {sampling.seed}')
-        st.caption('Seed och urval sparas under analysen. Samma seed och samma ordnade '
-                   'population med samma identitets- och klassificeringsunderlag ger samma urval. Ett nytt seed kan '
-                   'ge samma fakturor, särskilt om få unika leverantörer är möjliga.')
+                  on_click=change_sampling_method, args=(True,),
+                  help='Ett nytt urval kan innehålla samma verifikationer, särskilt när få leverantörer finns att välja från.')
+        st.caption('Slumpar upp till 20 verifikationer, med högst en per leverantör. '
+                   'Urvalet sparas tills du skapar ett nytt eller ändrar analysunderlaget.')
     else:
-        st.caption(f'Önskat antal beräknas som population // {sampling.interval}. '
-                   'Den stegvisa metoden har inte ett fast mål på 20.')
+        st.caption(f'Utgångspunkten är var {sampling.interval}:e verifikation i filens ordning. '
+                   'Om leverantören redan valts eller inte kan identifieras entydigt går urvalet vidare. '
+                   'Högst en verifikation per leverantör väljs.')
     notice = st.session_state.pop('sampling_notice', None)
     if notice:
         st.info(notice)
-    for column, label, value in zip(st.columns(3),
-            ['Verifikationer i urvalspopulationen', 'Önskat antal fakturor', 'Faktiskt antal fakturor'],
-            [result.summary.eligible_verifications, sampling.target_size, len(sampling.sample)]):
-        column.metric(label, value)
-    st.caption(f'Urvalsenheten är en verifikation med alla dess rader. '
-               f'{int(sampling.decisions.identity_usable.sum())} verifikationer har användbar leverantörsnyckel; '
-               'leverantörsunikheten kan begränsa antalet ytterligare.')
-    st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
     counts = sampling.classification_counts
-    for column, status in zip(st.columns(3), ('INTERNAL', 'EXTERNAL', 'UNCLASSIFIED')):
-        column.metric({'INTERNAL': 'Bekräftat interna', 'EXTERNAL': 'Bekräftat externa',
-                       'UNCLASSIFIED': 'Oklassificerade'}[status], counts[status])
-    left, right = st.columns(2)
-    left.metric('Bortval på grund av kvotbegränsning', sampling.quota_rejections)
-    right.metric('Bortval på grund av klassificeringskonflikter', sampling.conflict_rejections)
-    st.caption('Antalen avser verifikationer. Bortval räknas efter respektive registrerat urvalsbeslut.')
-    st.caption(QUOTA_EXPLANATION)
-    if not sampling.internal_rules_active:
-        st.info(NO_INTERNAL_RULES)
-    st.caption('Manuellt stickprov med högst en verifikation per leverantörsnyckel/normaliserat namn, valt efter analysen. '
-               'Vyfiltren ändrar inte vilka verifikationer som ingår i stickprovet.')
-    if result.sampling_result is not None and result.sampling_result.shortfall_message:
-        st.warning(result.sampling_result.shortfall_message)
+    if sampling.sample and not sampling.internal_rules_active:
+        st.info('Interna leverantörer kan ingå. Denna körning saknar regler för att identifiera dem.')
+    elif counts['UNCLASSIFIED']:
+        st.info('Vissa leverantörer är oklassificerade. Andelen interna leverantörer kan därför vara högre än 5 %.')
     groups, _ = verification_details(result, 'selected')
     classification = sampling.decisions.set_index('population_position')['supplier_classification']
     groups['supplier_classification'] = groups.population_position.map(classification).map(CLASSIFICATION_LABELS)
     st.dataframe(display_dataframe(groups[['verification_id', 'supplier', 'supplier_classification']]),
                  column_config={'verification_id': 'Verifikation', 'supplier': 'Leverantör',
-                                'supplier_classification': 'Klassificering'},
+                                'supplier_classification': None},
                  hide_index=True, width='stretch')
-    st.caption('Leverantörsnamnen kommer från stickprovets befintliga identitetsunderlag. '
-               'Ett namn från Huvudtext är inte i sig en bekräftad juridisk identitet.')
     # The reader supplies unique row indexes; grouping/sampling retain them.
     positions = [position for verification in result.manual_sample for position in verification.rows.index]
     sample = result.original_data.loc[positions].copy(deep=True)
-    show_filtered_table(sample, view='manual')
+    with st.expander(f'Visa stickprovets {len(sample)} bokföringsrader', expanded=False):
+        show_filtered_table(sample, view='manual')
     with st.expander('Urvalsbeslut, klassificering och källspårning', expanded=False):
+        if result.supplier_analysis is not None:
+            registry = result.supplier_analysis.registry
+            st.text('Register för denna körning: ' + (registry.source_name or 'Inget register') +
+                    (' (matchning tillgänglig)' if registry.available else ' (matchning ej tillgänglig)'))
+        st.caption(f'Planerat antal: {sampling.target_size} verifikationer. '
+                   f'{int(sampling.decisions.identity_usable.sum())} verifikationer har en användbar leverantörsnyckel.')
+        st.caption(f'Genereringstidpunkt (UTC): {sampling.generated_at}')
+        if sampling.method == 'randomized':
+            st.text(f'Seed: {sampling.seed}')
+            st.caption('Samma seed och samma ordnade population med samma identitets- och '
+                       'klassificeringsunderlag ger samma urval.')
+        else:
+            st.caption(f'Planerat antal är antalet verifikationer i urvalsunderlaget delat med '
+                       f'{sampling.interval}, avrundat nedåt.')
+        for column, status in zip(st.columns(3), ('INTERNAL', 'EXTERNAL', 'UNCLASSIFIED')):
+            column.metric({'INTERNAL': 'Bekräftat interna', 'EXTERNAL': 'Bekräftat externa',
+                           'UNCLASSIFIED': 'Oklassificerade'}[status], counts[status])
+        left, right = st.columns(2)
+        left.metric('Bortval på grund av kvotbegränsning', sampling.quota_rejections)
+        right.metric('Bortval på grund av klassificeringskonflikter', sampling.conflict_rejections)
+        st.caption('Antalen avser verifikationer. Bortval räknas efter respektive registrerat urvalsbeslut.')
+        st.caption(QUOTA_EXPLANATION)
+        if not sampling.internal_rules_active:
+            st.info(NO_INTERNAL_RULES)
+        st.caption('Leverantörsnamnen hämtas från stickprovets identitetsunderlag. '
+                   'Ett namn från Huvudtext är inte i sig en bekräftad juridisk identitet.')
         st.caption('Samtliga verifikationer redovisas, även ej prövade och bortvalda. '
                    'Slutkontrollen tar bort senast valda interna först utan att fylla platserna på nytt.')
         st.dataframe(display_dataframe(sampling.decisions), hide_index=True, width='stretch')
@@ -444,14 +460,17 @@ def show_filters(review):
     options = sorted(set(defaults) | set(present))
     with st.sidebar:
         st.button('Till översikt', key='home', icon=':material/home:', on_click=home)
-        st.subheader('Exkluderingsregler')
-        st.caption('Valda typer exkluderas. Ta bort ett val för att återinkludera typen.')
-        if st.button('Återställ filter till standard'):
-            st.session_state['excluded_types'] = defaults
-        selected = st.multiselect('Exkluderade verifikationstyper', options,
-                                  default=defaults, key='excluded_types')
-        st.write('Aktiva typer i filen: ' + (', '.join(t for t in present if t not in selected) or 'Inga'))
-        st.caption('Konto 7698 och 7699 exkluderas alltid. Tom Vertyp behålls.')
+        with st.expander('Exkluderingsregler', expanded=False):
+            st.caption('Valda verifikationstyper tas bort från granskningsunderlaget. '
+                       'Ta bort ett val för att ta med typen igen.')
+            if st.button('Återställ filter till standard'):
+                st.session_state['excluded_types'] = defaults
+            selected = st.multiselect('Exkluderade verifikationstyper', options,
+                                      default=defaults, key='excluded_types')
+            st.write('Typer i filen som inte valts bort här: ' + (', '.join(t for t in present if t not in selected) or 'Inga'))
+            st.caption('Konto 7698 och 7699 exkluderas alltid. Tom Vertyp behålls.')
+        st.caption('Standardregler används.' if sorted(selected) == sorted(defaults)
+                   else 'Anpassade exkluderingsregler används.')
     previous = tuple(sorted(defaults)) if review.excluded_types is None else review.excluded_types
     if tuple(sorted(selected)) != previous:
         updated = analyze_upload(review.source_content, excluded_verification_types=selected,
@@ -475,17 +494,15 @@ def show_filters(review):
 
 
 def show_invoice_upload_feedback(upload):
-    """Describe receipt separately from validation, which runs on Starta analys."""
+    """Surface actionable problems; native uploads already display the filename."""
     if upload is None:
         return
-    st.text(f'Uppladdat fakturaunderlag: {upload.name}')
     error = st.session_state.get('invoice_upload_error')
     if error:
         st.error(error)
         return
     review = st.session_state.get('review')
     if review is None:
-        st.caption('Filen kontrolleras när du väljer Starta analys.')
         return
     validation = review.result.validation
     if validation.schema_errors or any(row.validation_errors for row in validation.rows):
@@ -494,14 +511,12 @@ def show_invoice_upload_feedback(upload):
     elif review.result.original_data.empty:
         st.warning('Filen har lästs in men innehåller inga rader att granska. '
                    'Kontrollera att fakturaunderlaget finns på det första kalkylbladet.')
-    else:
-        st.caption('Filen har kontrollerats utan valideringsfel. Du kan fortsätta med granskningen.')
 
 
 def show_upload_registry(source, config):
     """Show availability and a source-specific extraction date, using existing validation."""
     if source.content is None:
-        st.info('Ladda upp ett koncernavtalsregister för att genomföra leverantörsmatchning.')
+        st.info('Utan avtalsregister görs ingen leverantörsmatchning.')
         return replace(source, snapshot_date=None)
 
     identity = (source.kind, source.sha256)
@@ -519,21 +534,19 @@ def show_upload_registry(source, config):
 
     path, _ = default_registry_location(config)
     filename = path.name if source.kind == 'default' and path is not None else source.name
-    st.text(f'Aktivt avtalsregister: {filename}')
+    if source.kind == 'default':
+        st.text(f'Standardregister: {filename}')
     if cached[2]:
-        st.caption('Registret kan användas för att matcha leverantörsnamn, men kontrollen visar '
-                   'uppgifter som behöver granskas. Se registervarningarna i resultatet.')
-    else:
-        st.caption('Registret har kontrollerats och används för att matcha leverantörsnamn.')
+        st.caption('Registervarningar finns under Detaljer → Kontroller → Registervarningar.')
     dates = st.session_state.setdefault('upload_registry_dates', {})
     known_date = dates.get(identity, source.snapshot_date if source.kind == 'default' else None)
-    registry_date = st.date_input('Registerutdragets datum', value=known_date,
-        key=f'registry_date_{source.kind}_{source.sha256}', on_change=clear_result,
-        help='Ange datumet då registret togs ut. Datumet används endast för att varna när '
-             'en transaktion är senare än registerutdraget, inte för att bedöma avtalsperioder.')
+    with st.expander('Registerdatum (valfritt)', expanded=False):
+        registry_date = st.date_input('Datum då registret togs ut', value=known_date,
+            format='YYYY-MM-DD',
+            key=f'registry_date_{source.kind}_{source.sha256}', on_change=clear_result,
+            help='Används bara för att varna om en transaktion är senare än registerutdraget. '
+                 'Du kan lämna datumet tomt; då kan registeråldern inte kontrolleras.')
     dates[identity] = registry_date
-    if registry_date is None:
-        st.caption('Ange registerutdragets datum om du känner till det. Utan datum kan registeråldern inte kontrolleras.')
     # An explicit source preserves an unknown date instead of inheriting a default
     # register's configured date when the user has uploaded a replacement.
     return replace(source, snapshot_date=registry_date)
@@ -543,24 +556,21 @@ def main():
     st.set_page_config(page_title='Fakturagranskning', layout='wide')
     st.html(Path(__file__).parent / '.streamlit' / 'style.css')
     with st.container(key='page_header'):
-        st.caption('UNDERLAG · ANALYS · GRANSKNING')
         st.title('Fakturagranskning')
         st.write('Granska leverantörsfakturor, förstå avvikelser och samla underlag för manuell kontroll.')
-        st.html('<div class="audit-assurances"><span>Lokal analys</span>'
-                '<span>Originaldata förändras inte</span></div>')
+        st.html('<div class="audit-assurances"><span>Originaldata förändras inte</span></div>')
     with st.sidebar:
         st.subheader('Ladda upp underlag')
-        st.caption('I detta verktyg används Excel-filer (.xlsx)')
+        st.caption(f'Excel (.xlsx) · Max {st.get_option("server.maxUploadSize")} MB per fil')
         with st.container(key='invoice_upload_panel'):
-            upload = st.file_uploader('Här laddar du upp fakturaunderlaget', type=['xlsx'],
+            upload = st.file_uploader('Fakturaunderlag', type=['xlsx'],
                 on_change=clear_result, help='Det första kalkylbladet läses. Alla rader behandlas.')
-            st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
             invoice_feedback = st.empty()
         registry_config = load_matching_settings()
         with st.container(key='registry_upload_panel'):
-            registry_upload = st.file_uploader('Här laddar du upp koncernavtalsregistret', type=['xlsx'],
-                key='registry_upload', on_change=clear_result)
-            st.caption(f'Max {st.get_option("server.maxUploadSize")} MB per fil')
+            registry_upload = st.file_uploader('Koncernavtalsregister (valfritt)', type=['xlsx'],
+                key='registry_upload', on_change=clear_result,
+                help='Används för att jämföra leverantörsnamn med avtalsregistret.')
         selected_registry = resolve_registry_source(
             uploaded_content=registry_upload.getvalue() if registry_upload else None,
             uploaded_name=registry_upload.name if registry_upload else None)

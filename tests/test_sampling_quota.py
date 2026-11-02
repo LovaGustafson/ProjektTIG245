@@ -11,6 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from src.sampling.classification import NO_INTERNAL_RULES, load_sampling_rules
 from src.sampling.manual_sample import DEFAULT_SETTINGS_PATH, plan_manual_sample, plan_random_sample
+from src.output.report_generator import REVIEW_SAMPLE_FILES
 from src.ui_support import analyze_upload, select_sample_method
 from tests.test_feature_package import settings, workbook
 from tests.test_priority2 import units
@@ -187,6 +188,14 @@ def test_ui_and_every_export_share_classifications_rules_snapshot_and_decisions(
         for filename in current.downloads:
             sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
             meta = sheets['Urvalsmetod'].iloc[0]
+            if filename in REVIEW_SAMPLE_FILES:
+                # Explicit row downloads are independent of verification quotas.
+                assert meta['Antal valda rader'] == len(data) // 20
+                assert sheets['Urvalspopulation'].source_row_position.tolist() == list(range(len(data)))
+                assert 'Urvalsbeslut' not in sheets
+                if REVIEW_SAMPLE_FILES[filename] == 'systematic':
+                    assert sheets['Urvalspositioner'].population_position.tolist() == list(range(20, 421, 20))
+                continue
             for key, value in plan.quota_metadata.items():
                 assert meta[key] == value
             assert meta['Antal valda verifikationer'] == len(plan.sample)

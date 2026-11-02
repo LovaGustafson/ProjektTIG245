@@ -25,6 +25,8 @@ DOWNLOADS = {
     'flagged_invoices.xlsx': 'Hämta avvikelserapport',
     'manual_sample.xlsx': 'Hämta manuellt stickprov',
     'uncertain_suppliers.xlsx': 'Hämta osäkra namnmatchningar',
+    'manual_sample_every_20th.xlsx': 'Hämta manuellt stickprov (var 20:e)',
+    'manual_sample_randomized.xlsx': 'Hämta manuellt stickprov (randomiserat)',
 }
 
 
@@ -57,7 +59,7 @@ def descendants(block):
 
 
 @pytest.mark.parametrize('mode', ['uploaded', 'missing', 'unreadable'])
-def test_manual_overview_then_dynamic_register_information_then_sampling_controls(no_local_default, mode):
+def test_manual_overview_and_controls_keep_register_information_in_collapsed_details(no_local_default, mode):
     options = {'registry_mode': 'disabled'} if mode == 'missing' else {
         'registry_mode': 'uploaded', 'registry_name': 'syntetiskt-aktuellt-register.xlsx',
         'registry_content': workbook(registry()) if mode == 'uploaded' else b'invalid workbook',
@@ -77,7 +79,10 @@ def test_manual_overview_then_dynamic_register_information_then_sampling_control
     ordered = list(descendants(manual))
     positions = {id(item): index for index, item in enumerate(ordered)}
     assert max(positions[id(item)] for item in descendants(overview)) < positions[id(register_line)]
-    assert positions[id(register_line)] < positions[id(method_heading)]
+    assert positions[id(method_heading)] < positions[id(register_line)]
+    audit = next(e for e in manual.expander if e.label == 'Urvalsbeslut, klassificering och källspårning')
+    assert register_line in list(descendants(audit))
+    assert not audit.proto.expanded
     assert len(app.radio) == len(manual.radio) == 1
     assert manual.radio[0].key == 'manual_sample_method'
     assert not any(button.key == 'regenerate_manual_sample' for button in app.button)
@@ -112,14 +117,14 @@ def test_eager_tab_reruns_keep_saved_random_sample_and_chart_revision(no_local_d
     assert_same_analysis(before, review.result)
 
 
-def test_six_existing_downloads_stay_in_export_and_generate_only_requested_workbooks(no_local_default):
+def test_downloads_stay_in_export_and_generate_only_requested_workbooks(no_local_default):
     review = analyze_upload(workbook(invoices(22)), registry_content=workbook(registry()),
         registry_name='syntetiskt-register.xlsx', defer_downloads=True)
     with patch.object(report_generator, '_workbook', wraps=report_generator._workbook) as serialize:
         app = run_review(review)
         exports = tab(app, 'Export')
         assert [button.label for button in exports.download_button] == list(DOWNLOADS.values())
-        assert len(app.download_button) == len(exports.download_button) == 6
+        assert len(app.download_button) == len(exports.download_button) == 8
         assert all(button.proto.ignore_rerun and button.proto.deferred_file_id
                    for button in exports.download_button)
         assert serialize.call_count == 0 and not review.downloads._bytes

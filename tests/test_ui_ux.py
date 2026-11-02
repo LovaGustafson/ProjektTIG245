@@ -171,7 +171,7 @@ def test_filter_rerun_and_home_without_generating_exports(fixed_sampling_time):
     with patch.object(report_generator, '_workbook', side_effect=AssertionError('no download requested')):
         app.run()
         assert not app.exception
-        assert 'Exkluderingsregler' in [s.value for s in app.sidebar.subheader]
+        assert 'Exkluderingsregler' in [e.label for e in app.sidebar.expander]
         assert not any('MoSCoW' in s.value for s in app.sidebar.subheader)
         app.button(key='kpi_review').click().run()
         assert not app.exception
