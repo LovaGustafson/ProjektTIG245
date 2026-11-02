@@ -51,6 +51,16 @@ sections. A visible short warning still explains the risk of internal suppliers
 when classification is unavailable or incomplete. No analysis, selection,
 classification, filtering, export or source-preservation rule changes.
 
+The follow-up supplier-view cleanup on 2026-11-02 (M6/S4/C1–C3) keeps one short
+name-comparison explanation and its legal-identity/contract-applicability limit
+visible. Score, candidate-order, register-date and repeated contract-summary
+explanations are inspectable in a collapsed section. Missing register-age checks
+are explicitly labelled as such, separately from unverifiable contract periods;
+their different counting units are preserved. Zero view-exclusion explanations
+are collapsed; actual excluded counts and conflicting view rules remain visible.
+Review rows, matching decisions, scores, date results, sampling and exports stay
+unchanged.
+
 The 2026-10-12 sampling/filter request confirms adding `LR91S` and `LR95S` to
 the existing default verification-type exclusions (M2/M4/M5/M6). Users can
 reinclude either through the existing filter UI. Excluded occurrences and all
@@ -192,14 +202,21 @@ Open questions: structural-row boundaries and final invalid-record handling rema
 
 ## M5 — Sampling criteria documented
 
-The 2026-11-02 export request adds two separate row-download samples under M5/M6:
-every 20th retained review row (positions 20, 40, 60, etc.) in source-file order,
-and a seeded random draw without replacement of the same floor(retained rows / 20)
-size from that identical population. Seed 42, generator/version, ordering,
-population positions and source-occurrence linkage are recorded in the workbooks.
-These exports retain the review workbook's columns and are independent of the
-existing verification-level sampling methods, supplier constraints and targets
-documented below. Temporary UI view filters do not affect either row download.
+The latest 2026-11-02 correction supersedes the initial row-download behavior for
+`manual_sample_every_20th.xlsx` and `manual_sample_randomized.xlsx`: both must
+select at most 20 verifications, at most one per supplier under the existing
+organization-number/normalized-name rules. Complete bookkeeping groups follow
+each selected verification. Systematic uses existing nominal every-20th positions
+and forward replacements, with target min(grouped population // 20, 20).
+Randomized uses the established target of 20 with fixed seed 42. Existing
+identity, conflict, internal-quota and shortfall rules apply to both; no duplicate
+backfilling is allowed. A first `Stickprov` sheet has one row per selected
+verification; `Granskning` preserves the existing source columns and all selected
+bookkeeping rows. Metadata records target/actual verification and row counts,
+seed/generator, decisions and exact source linkage, including retained ungrouped
+occurrences outside the eligible population. Temporary UI filters cannot alter
+these exports. Default pipeline/CLI sampling and the active-sample export keep
+their existing algorithms; the optional cap is applied by these two downloads.
 
 The approved 2026-10-13 Del 1 constraint is implemented for both methods:
 confirmed internal suppliers may occupy at most floor(actual selected

@@ -7,7 +7,7 @@ from src.presentation import (
     customer_facing_value, REGISTRY_ORGANIZATION_COLUMNS,
     SUPPLIER_MATCH_EXPLANATION,
 )
-from src.ui_supplier_matches import MATCH_LABELS, match_explanation, show_supplier_candidates
+from src.ui_supplier_matches import MATCH_LABELS, SCORE_EXPLANATION, match_explanation, show_supplier_candidates
 from src.ui_navigation import select_drilldown
 from src.ui_overview_details import source_rows
 from src.supplier_matching.view_scope import visible_supplier_analysis
@@ -28,10 +28,13 @@ def show_supplier_scope(result):
     if classification is None:
         return
     excluded = classification.loc[classification['excluded_from_view'].astype(bool)]
-    st.caption(f'Interna/ej relevanta leverantörer exkluderade från denna vy: {len(excluded)} källrader. '
-               'Avser endast bekräftade vyregler. Oklassificerad betyder inte extern. '
-               'Hela granskningsunderlaget, matchningsresultaten och stickprovet bevaras.')
-    with st.expander('Vyavgränsning – klassificering, exkluderade poster och orsaker', expanded=False):
+    if not excluded.empty:
+        st.caption(f'Rader som inte räknas i leverantörsöversikten: {len(excluded)}. '
+                   'De finns kvar i granskningsunderlaget och exporterna.')
+    with st.expander('Om leverantörsöversikten', expanded=False):
+        st.caption(f'Interna/ej relevanta leverantörer exkluderade från denna vy: {len(excluded)} källrader. '
+                   'Avser endast bekräftade vyregler. Oklassificerad betyder inte extern. '
+                   'Hela granskningsunderlaget, matchningsresultaten och stickprovet bevaras.')
         if excluded.empty:
             st.info('Inga källrader har exkluderats av bekräftade leverantörsvyregler.')
         else:
@@ -40,9 +43,8 @@ def show_supplier_scope(result):
                          hide_index=True, width='stretch')
         with st.expander('Klassificering för alla kvarvarande källrader', expanded=False):
             st.dataframe(display_dataframe(classification), hide_index=True, width='stretch')
-        st.caption('Basexkluderingar redovisas separat under Varför exkluderades rader? '
-                   'Regler för denna vy finns i supplier_view_rules. Listan är tom tills '
-                   'uttryckliga regler med motivering har bekräftats.')
+        st.caption('Konto- och typfilter redovisas separat i Analysöversikt. '
+                   'Denna översikt använder bara särskilt bekräftade leverantörsregler.')
     if classification['classification'].eq('CONFLICT').any():
         st.warning('Motstridiga leverantörsvyregler finns. Berörda rader visas och kan granskas i klassificeringen.')
 
@@ -69,9 +71,8 @@ def show_supplier_summary(analysis, classification=None):
         else:
             st.error(message)
         return
-    st.caption(f'Registerutdrag: {analysis.registry.snapshot_date or "datum saknas"}. '
-               'En namnmatchning visar möjliga avtal. Vilket avtal köpet avser är inte bedömt.')
-    st.caption(SUPPLIER_MATCH_EXPLANATION)
+    st.caption('Leverantörsnamnen i fakturaunderlaget jämförs med avtalsregistret. '
+               'En namnträff bekräftar inte juridisk identitet eller att köpet omfattas av avtal.')
     with st.container(key='supplier_kpis'):
         for column, key, (label, count) in zip(st.columns(6), SUPPLIER_VIEWS, analysis.summary().items()):
             column.button(f'**{count}**  \n{label}', key='supplier_' + key, width='stretch',
@@ -79,15 +80,29 @@ def show_supplier_summary(analysis, classification=None):
                           type='primary' if st.session_state.get('selected_supplier') == key else 'secondary')
     unknown_dates = int((analysis.rows['registry_date_check'] == 'UNKNOWN').sum())
     if unknown_dates:
-        st.warning(f'{unknown_dates} rader kunde inte datumkontrolleras. Se raddetaljer.')
-    st.markdown('**Avtalsperioder vid verifikationsdatum**')
-    counts = full_analysis.contracts['contract_period_result'].value_counts()
-    for label in (ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE):
-        st.text(f'{label}: {int(counts.get(label, 0))} avtalsjämförelser')
-    st.caption('Avtalsjämförelserna avser hela körningen, oberoende av leverantörsvyn. '
-               'Varje registeravtal jämförs separat med källradens datum. Flera avtal kan finnas per rad. '
-               'En aktiv period bevisar inte att köpet omfattas av avtalet. '
-               'Ej verifierbara perioder är inte konstaterade avvikelser.')
+        if analysis.registry.snapshot_date is None:
+            st.warning(f'Registerutdragets datum är okänt. Därför kunde registrets ålder inte '
+                       f'kontrolleras för {unknown_dates} rader. Avtalsperioderna bedöms separat.')
+        else:
+            st.warning(f'Registrets ålder kunde inte kontrolleras för {unknown_dates} rader '
+                       'eftersom datumet i underlaget saknas eller är ogiltigt. Se raddetaljerna.')
+    with st.expander('Så fungerar leverantörsmatchningen', expanded=False):
+        st.caption(SUPPLIER_MATCH_EXPLANATION)
+        st.caption(SCORE_EXPLANATION)
+        st.caption('Vid osäker matchning visas den första registerkandidaten i den sparade ordningen, '
+                   'utan att någon leverantör har valts. Alla kandidater och deras score finns i raddetaljerna.')
+        st.caption('Även rader med valideringsfel finns kvar för granskning.')
+        st.caption(f'Registerutdrag: {analysis.registry.snapshot_date or "datum saknas"}. '
+                   'Datumet används för att kontrollera registrets ålder, inte avtalens giltighetsperioder.')
+        st.markdown('**Avtalsperioder vid verifikationsdatum**')
+        counts = full_analysis.contracts['contract_period_result'].value_counts()
+        for label in (ACTIVE, NOT_STARTED, ENDED, UNVERIFIABLE):
+            st.text(f'{label}: {int(counts.get(label, 0))} avtalsjämförelser')
+        st.caption('Avtalsjämförelserna avser hela körningen, oberoende av leverantörsvyn. '
+                   'Varje registeravtal jämförs separat med källradens datum. Flera avtal kan finnas per rad. '
+                   'En aktiv period bevisar inte att köpet omfattas av avtalet. '
+                   'Ej verifierbara perioder är inte konstaterade avvikelser.')
+        st.caption('Avtalsperioderna visas på fliken Avvikelser och avtalsperioder.')
 
 
 def supplier_review_table(kept, analysis):

@@ -1,23 +1,25 @@
-"""Download-only row samples; independent of verification-level sampling."""
-from random import Random
+"""Download samples reuse confirmed verification/supplier rules, capped at 20."""
+from src.sampling.manual_sample import plan_manual_sample, plan_random_sample
 
 
 REVIEW_SAMPLE_INTERVAL = 20
 REVIEW_SAMPLE_SEED = 42
+REVIEW_SAMPLE_LIMIT = 20
 
 
-def review_sample_positions(population_size: int, method: str, *, seed=REVIEW_SAMPLE_SEED) -> list[int]:
-    """Return zero-based offsets in retained source order, without replacement.
+def plan_review_sample(verifications, method, *, supplier_analysis=None, classification_rules=(),
+                       seed=REVIEW_SAMPLE_SEED):
+    """Select complete groups with existing identity, uniqueness and quota rules.
 
-    Both methods select floor(population_size / 20) source occurrences. Random
-    selection uses a local generator and is returned in population order. Callers
-    must supply the full retained review population, before temporary UI filters.
-    Duplicate/missing business identifiers do not merge source occurrences.
+    Systematic retains nominal every-20th positions and forward replacement,
+    capped at 20. Randomized retains the established target of 20. Both consume
+    the completed analysis and saved classification rules, never live settings.
     """
-    if population_size < 0:
-        raise ValueError('Population size must be non-negative')
     if method == 'systematic':
-        return list(range(REVIEW_SAMPLE_INTERVAL - 1, population_size, REVIEW_SAMPLE_INTERVAL))
+        return plan_manual_sample(verifications, interval=REVIEW_SAMPLE_INTERVAL,
+                                  max_size=REVIEW_SAMPLE_LIMIT, supplier_analysis=supplier_analysis,
+                                  classification_rules=classification_rules)
     if method == 'randomized':
-        return sorted(Random(seed).sample(range(population_size), population_size // REVIEW_SAMPLE_INTERVAL))
-    raise ValueError('Unknown review row sampling method')
+        return plan_random_sample(verifications, seed=seed, supplier_analysis=supplier_analysis,
+                                  classification_rules=classification_rules)
+    raise ValueError('Unknown review sampling method')

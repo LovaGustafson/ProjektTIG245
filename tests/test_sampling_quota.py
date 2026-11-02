@@ -189,12 +189,16 @@ def test_ui_and_every_export_share_classifications_rules_snapshot_and_decisions(
             sheets = pd.read_excel(BytesIO(current.downloads[filename]), sheet_name=None, dtype=object)
             meta = sheets['Urvalsmetod'].iloc[0]
             if filename in REVIEW_SAMPLE_FILES:
-                # Explicit row downloads are independent of verification quotas.
-                assert meta['Antal valda rader'] == len(data) // 20
+                assert meta['Högsta antal verifikationer'] == 20
+                assert meta['Antal valda verifikationer'] <= 20
+                selected = sheets['Urvalsbeslut'].query("decision == 'SELECTED'")
+                assert selected.supplier_key.is_unique
+                assert meta['Antal bekräftat interna'] <= len(selected) // 20
+                assert sheets['Urvalsklassificeringsregler'].id.tolist() == [r['id'] for r in rules]
+                assert meta['Klassificeringsunderlag SHA-256'] == plan.classification_fingerprint
                 assert sheets['Urvalspopulation'].source_row_position.tolist() == list(range(len(data)))
-                assert 'Urvalsbeslut' not in sheets
                 if REVIEW_SAMPLE_FILES[filename] == 'systematic':
-                    assert sheets['Urvalspositioner'].population_position.tolist() == list(range(20, 421, 20))
+                    assert selected.nominal_position.max() <= 400
                 continue
             for key, value in plan.quota_metadata.items():
                 assert meta[key] == value

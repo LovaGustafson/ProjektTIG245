@@ -1,6 +1,7 @@
 """Presentation helpers and temporary upload handling; no analysis rules."""
 from dataclasses import dataclass, field, replace
 from collections.abc import Mapping
+from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,6 +19,9 @@ from src.ingestion.registry_source import resolve_registry_source, RegistrySourc
 from src.sampling.manual_sample import SamplingResult, SAMPLING_METHODS, plan_random_sample, new_sample_seed
 
 
+SAMPLE_EXPORT_VERSION = 2
+
+
 @dataclass
 class UploadResult:
     result: PipelineResult
@@ -30,6 +34,25 @@ class UploadResult:
     source_name: str | None = None
     settings_path: object = DEFAULT_SETTINGS_PATH
     sampling_plans: dict[str, SamplingResult] = field(default_factory=dict)
+    sample_export_version: int = SAMPLE_EXPORT_VERSION
+
+
+def refresh_sample_downloads(review):
+    """Replace old row-sample caches in open sessions, keeping saved source evidence."""
+    # An old dataclass instance can inherit a new class default after reload;
+    # require the version to have actually been set on this instance.
+    if vars(review).get('sample_export_version') == SAMPLE_EXPORT_VERSION:
+        return review
+    old = review.downloads
+    with getattr(old, '_lock', nullcontext()):
+        cached = dict(getattr(old, '_bytes', old if isinstance(old, dict) else {}))
+        result = getattr(old, '_result', review.result)
+    downloads = DeferredDownloads(result)
+    downloads._bytes.update({name: value for name, value in cached.items()
+                             if name in downloads.FILENAMES and name not in REVIEW_SAMPLE_FILES})
+    updated = replace(review, downloads=downloads)
+    updated.sample_export_version = SAMPLE_EXPORT_VERSION
+    return updated
 
 
 def select_sample_method(review: UploadResult, method: str, *, regenerate=False) -> UploadResult:
@@ -96,7 +119,8 @@ class DeferredDownloads(Mapping):
                     content = review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
                         run_summary=result.summary, source_context=result.source_context,
                         sampling_evidence=result.sampling_evidence, sampling_result=result.sampling_result,
-                        supplier_view=result.supplier_view, filenames=[filename])[filename]
+                        supplier_view=result.supplier_view, filenames=[filename],
+                        verifications=result.verifications)[filename]
                 else:
                     with TemporaryDirectory(prefix='invoice-export-') as directory:
                         paths = export_pipeline_result(result, output_dir=directory,
@@ -142,7 +166,8 @@ def analyze_upload(content: bytes, *, excluded_verification_types=None,
         downloads.update(review_workbooks(result.original_data, result.filtering, result.supplier_analysis,
                                          run_summary=result.summary, source_context=result.source_context,
                                          sampling_evidence=result.sampling_evidence,
-                                         sampling_result=result.sampling_result, supplier_view=result.supplier_view))
+                                         sampling_result=result.sampling_result, supplier_view=result.supplier_view,
+                                         verifications=result.verifications))
     return UploadResult(result, downloads, bytes(content),
                         None if excluded_verification_types is None else tuple(sorted(excluded_verification_types)),
                         selected_registry.content, selected_registry.snapshot_date,

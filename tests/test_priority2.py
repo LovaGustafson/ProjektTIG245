@@ -206,7 +206,7 @@ def test_confirmed_organization_view_rule_preserves_accuracy_and_inspectable_row
     app.run()
     assert not app.exception
     assert any('exkluderade från denna vy: 2 källrader' in c.value for c in app.caption)
-    scope = next(e for e in app.expander if e.label.startswith('Vyavgränsning'))
+    scope = next(e for e in app.expander if e.label == 'Om leverantörsöversikten')
     assert not scope.proto.expanded
     assert scope.dataframe[0].value.source_row_position.tolist() == [0, 1]
     assert scope.dataframe[0].value.reason.tolist() == [rule()['reason']] * 2

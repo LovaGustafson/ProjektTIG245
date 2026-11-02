@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable, Mapping
 from contextlib import ExitStack
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from decimal import Decimal
 from io import BytesIO
 from itertools import chain
@@ -23,7 +23,7 @@ from src.supplier_matching.extraction import normalize_header_text
 from src.run_summary import SAMPLE_ORDER, SAMPLE_POPULATION, SAMPLE_IDENTITY, sampling_method_description
 from src.sampling.manual_sample import SAMPLING_METHODS
 from src.sampling.classification import RULE_COLUMNS
-from src.sampling.review_sample import REVIEW_SAMPLE_INTERVAL, REVIEW_SAMPLE_SEED, review_sample_positions
+from src.sampling.review_sample import REVIEW_SAMPLE_LIMIT, plan_review_sample
 
 
 ROW_COLUMNS = ["verification_id", "verification_line_id"]
@@ -323,44 +323,57 @@ def review_summary(original_data, filtering):
     }
 
 
-def _review_sample_workbook(review, method, *, supplier_analysis, run_summary, source_context):
-    """Serialize a row sample with the same columns as granskning.xlsx."""
-    positions = review_sample_positions(len(review), method)
-    rows = review.iloc[positions].copy(deep=True)
-    population = pd.DataFrame({
-        'population_position': range(1, len(review) + 1),
-        'source_row_position': list(review.index),
-        'selected': pd.RangeIndex(len(review)).isin(positions),
-    })
-    selected = population.iloc[positions].copy(deep=True)
-    selected['export_row'] = range(2, len(rows) + 2)
-    audit = audit_sheets(rows, source_context=source_context, run_summary=run_summary,
-                         table_name='Granskning')
-    audit['Urvalsmetod'] = pd.DataFrame([{
-        'Urvalsenhet': 'Källrad (en förekomst, inte en hel verifikation)',
-        'Population': 'Alla rader i Kvar för granskning efter aktiva exkluderingsregler, före tillfälliga vyfilter.',
-        'Ordning': 'Källfilens inläsningsordning efter exkludering, utan omsortering. Populationens positioner räknas från 1.',
-        'Urvalsmetod': 'Randomiserat radurval' if method == 'randomized' else 'Var 20:e rad',
-        'Metod': ('Slumpmässigt utan återläggning från hela radpopulationen; export i populationsordning.'
-                  if method == 'randomized' else 'Positionerna 20, 40, 60 osv. utan ersättningsval.'),
-        'Antalsregel': 'Antal rader i populationen // 20 (avrundat nedåt). Samma antal för båda radurvalen.',
-        'Intervall': REVIEW_SAMPLE_INTERVAL if method == 'systematic' else None,
-        'Seed': str(REVIEW_SAMPLE_SEED) if method == 'randomized' else None,
-        'Slumpgenerator': (f'random.Random.sample (MT19937), Python {python_version()}, review-rows-v1'
-                          if method == 'randomized' else None),
-        'Antal rader i populationen': len(review),
-        'Önskat antal rader': len(positions),
-        'Antal valda rader': len(rows),
-        'Körningskontext': 'Körningsöversikt avser hela analysen och dess befintliga verifikationsurval. Detta radurval är en separat export.',
-    }])
+def _review_sample_workbook(review, method, *, verifications, supplier_analysis,
+                            run_summary, source_context, sampling_result):
+    """Keep review columns while exporting at most 20 supplier-unique groups."""
+    if verifications is None or sampling_result is None or run_summary is None:
+        raise ValueError('Verification sample exports require completed population and sampling evidence')
+    plan = plan_review_sample(verifications, method, supplier_analysis=supplier_analysis,
+                               classification_rules=sampling_result.classification_rules)
+    positions = [p for verification in plan.sample for p in verification.rows.index]
+    rows = review.loc[positions].copy(deep=True)
+    summary = replace(run_summary, sample_interval=plan.interval,
+                      sampled_verifications=len(plan.sample), sampled_rows=len(rows))
+    audit = audit_sheets(rows, source_context=source_context, run_summary=summary,
+                         sampling_result=plan, table_name='Granskning')
+    audit['Urvalsmetod']['Urvalsenhet'] = 'Verifikation med alla dess bokföringsrader'
+    audit['Urvalsmetod']['Högsta antal verifikationer'] = REVIEW_SAMPLE_LIMIT
+    audit['Urvalsmetod']['Antalsregel'] = (
+        'Det minsta av antalet grupperade verifikationer delat med 20 (avrundat nedåt) och 20.' if method == 'systematic'
+        else 'Högst 20 verifikationer från hela den grupperade populationen.')
+    # Account for retained ungrouped occurrences as well as eligible groups.
+    population = plan.identity_rows.set_index('source_row_position')[
+        ['population_position', 'verification_id', 'supplier_key']].reindex(review.index)
+    population.index.name = 'source_row_position'
+    population['eligible'] = population.population_position.notna()
+    population['selected'] = population.index.isin(positions)
+    reasons = plan.decisions.set_index('population_position').selection_reason
+    population['reason'] = population.population_position.map(reasons).fillna(
+        'Utanför urvalspopulationen: saknar användbart verifikations-ID; kvar i granskningsunderlaget.')
+    selected = plan.selected_identity_rows.copy(deep=True)
+    export_rows = {position: row for row, position in enumerate(positions, 2)}
+    selected['export_row'] = selected.source_row_position.map(export_rows)
+    selected['sample_export_sheet'] = 'Stickprov'
+    selected_positions = plan.decisions.loc[plan.decisions.decision.eq('SELECTED'), 'population_position']
+    selected['sample_export_row'] = selected.population_position.map(
+        {position: row for row, position in enumerate(selected_positions, 2)})
+    sample_summary = pd.DataFrame([
+        {'Verifikation': verification.verification_id,
+         'Leverantör': '; '.join(dict.fromkeys(selected.loc[
+             selected.source_row_position.isin(verification.rows.index), 'supplier_text_raw'].dropna())),
+         'Bokföringsrader': len(verification.rows)}
+        for verification in plan.sample
+    ], columns=['Verifikation', 'Leverantör', 'Bokföringsrader'])
+    population = population.reset_index()
     audit['Urvalspopulation'] = population
     audit['Urvalspositioner'] = selected
-    return _workbook({'Granskning': rows, **supplier_sheets(supplier_analysis, rows.index), **audit})
+    return _workbook({'Stickprov': sample_summary, 'Granskning': rows,
+                      **supplier_sheets(supplier_analysis, rows.index), **audit})
 
 
 def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_summary=None,
                      source_context=None, sampling_evidence=None, sampling_result=None, supplier_view=None,
-                     filenames=None):
+                     filenames=None, verifications=None):
     review, excluded = review_tables(original_data, filtering)
     review = _export_rows(review, supplier_analysis)
     counts = review_summary(original_data, filtering)
@@ -391,8 +404,8 @@ def review_workbooks(original_data, filtering, supplier_analysis=None, *, run_su
     }
     workbooks.update({
         filename: lambda method=method: _review_sample_workbook(
-            review, method, supplier_analysis=supplier_analysis,
-            run_summary=run_summary, source_context=source_context)
+            review, method, verifications=verifications, supplier_analysis=supplier_analysis,
+            run_summary=run_summary, source_context=source_context, sampling_result=sampling_result)
         for filename, method in REVIEW_SAMPLE_FILES.items()
     })
     names = list(workbooks) if filenames is None else list(filenames)

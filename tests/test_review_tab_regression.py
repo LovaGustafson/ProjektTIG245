@@ -130,12 +130,12 @@ def test_review_layout_is_preserved_and_register_warnings_stay_in_controls(local
     assert 'Nordmöbler AB (kandidat)' in table.value['Leverantör i avtalsregistret'].tolist()
     ordered = list(descendants(tab))
     positions = {id(item): position for position, item in enumerate(ordered)}
-    source_caption = next(item for item in tab.caption if item.value.startswith('Alla kvarvarande rader'))
-    classification = next(item for item in tab.expander if item.label.startswith('Vyavgränsning'))
-    assert positions[id(tab.subheader[0])] < positions[id(source_caption)] < positions[id(table)]
+    instruction = next(item for item in tab.caption if item.value.startswith('Markera en rad för att'))
+    classification = next(item for item in tab.expander if item.label == 'Om leverantörsöversikten')
+    assert positions[id(tab.subheader[0])] < positions[id(instruction)] < positions[id(table)]
     assert positions[id(table)] < positions[id(classification)]
-    assert len([item for item in app.expander if item.label.startswith('Vyavgränsning')]) == 1
-    assert not any(item.label.startswith('Vyavgränsning') for item in main_tabs[0].expander)
+    assert len([item for item in app.expander if item.label == 'Om leverantörsöversikten']) == 1
+    assert not any(item.label == 'Om leverantörsöversikten' for item in main_tabs[0].expander)
     assert not any(button.key and button.key.startswith('supplier_') for button in main_tabs[0].button)
     assert not any(table.key == 'review_rows' for table in main_tabs[0].dataframe)
 
